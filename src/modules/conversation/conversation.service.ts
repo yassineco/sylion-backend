@@ -66,7 +66,7 @@ export class ConversationService {
         .limit(1);
 
       if (channelResults.length === 0) {
-        throw new SylionError('Channel non trouvé ou inactif', {
+        throw new SylionError(ErrorCodes.CHANNEL_NOT_FOUND, 'Channel non trouvé ou inactif', {
           details: { channelId, tenantId }
         });
       }
@@ -83,7 +83,7 @@ export class ConversationService {
         .limit(1);
 
       if (assistantResults.length === 0) {
-        throw new SylionError('Assistant non trouvé ou inactif', {
+        throw new SylionError(ErrorCodes.ASSISTANT_NOT_FOUND, 'Assistant non trouvé ou inactif', {
           details: { assistantId, tenantId }
         });
       }
@@ -106,7 +106,7 @@ export class ConversationService {
 
       const conversation = results[0];
       if (!conversation) {
-        throw new SylionError('Erreur lors de la création de la conversation', {
+        throw new SylionError(ErrorCodes.INTERNAL_SERVER_ERROR, 'Erreur lors de la création de la conversation', {
           
         });
       }
@@ -317,7 +317,7 @@ export class ConversationService {
 
       const conversation = results[0];
       if (!conversation) {
-        throw new SylionError('Erreur lors de la mise à jour de la conversation', {
+        throw new SylionError(ErrorCodes.INTERNAL_SERVER_ERROR, 'Erreur lors de la mise à jour de la conversation', {
           
         });
       }

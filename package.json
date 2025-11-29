@@ -85,6 +85,9 @@
   "peerDependencies": {
     "typescript": "^5.0.0"
   },
+  "tsx": {
+    "tsconfig": "./tsconfig.json"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/SylionTech/sylion-backend.git"

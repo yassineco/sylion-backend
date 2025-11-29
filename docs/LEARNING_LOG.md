@@ -17,18 +17,30 @@ Mettre à jour **après chaque milestone / bug important / refactor**.
 
 ---
 
-# 📝 2. Décisions d’Architecture
+# 📝 2. Décisions d'Architecture
+
+## [2025-11-29] – Migration imports relatifs vs alias
+Raisons :
+- imports @/* causaient erreurs TypeScript dans VS Code
+- meilleure compatibilité avec tsx et compilation
+- évite dépendance à la configuration tsconfig paths
+
+## [2025-11-29] – Configuration VS Code dédiée
+Raisons :
+- améliorer DX (Developer Experience)
+- résolution modules TypeScript optimisée
+- settings.json pour cohérence équipe
 
 ## [2025-xx-xx] – Adoption Fastify
 Raisons :
-- plus performant qu’Express
+- plus performant qu'Express
 - écosystème propre
 - idéal pour WhatsApp webhook (low latency)
 
 ## [2025-xx-xx] – Drizzle ORM + Supabase
 Raisons :
 - typed SQL, migrations propres
-- Supabase déjà utilisé par d’autres projets Sylion
+- Supabase déjà utilisé par d'autres projets Sylion
 - pgvector support natif
 
 ## [2025-xx-xx] – BullMQ obligatoire
@@ -40,6 +52,26 @@ Raisons :
 ---
 
 # 🐛 3. Incidents & Résolutions
+
+## Incident #3 – Erreurs imports TypeScript (@/)
+**Date :** 29 novembre 2025
+**Cause :** 
+- imports alias @/* non résolus dans tenant.controller.ts
+- TenantService module introuvable malgré existence
+- configuration VS Code TypeScript incomplète
+**Solution :**
+- migration vers imports relatifs (../../lib/http)
+- ajout .vscode/settings.json et tsconfig.json
+- validation avec npm run type-check
+
+## Incident #2 – Configuration chemins modules
+**Date :** 29 novembre 2025
+**Cause :** 
+- tsconfig paths non correctement interprétés
+- tsx vs TypeScript compiler différences
+**Solution :**
+- uniformisation avec imports relatifs
+- configuration VS Code dédiée
 
 ## Incident #1 – Erreur JSON dans Webhook WhatsApp
 Cause probable :
@@ -53,6 +85,10 @@ Solution :
 
 (Complète au fur et à mesure)
 
+- **Imports TypeScript** : Différence entre path aliases et imports relatifs pour compatibilité
+- **VS Code configuration** : Impact settings.json sur résolution modules TypeScript
+- **tsx vs tsc** : Différences compilation et résolution modules
+- **Developer Experience** : Configuration IDE critique pour productivité équipe
 - RAG local vs RAG hybride (Vertex)
 - Patterns multi-tenant (tenantId dans toutes les entités)
 - Reverse proxy Nginx clair vs Cloudflare Zero Trust

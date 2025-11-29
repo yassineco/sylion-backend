@@ -5,7 +5,7 @@
  */
 
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { sendSuccess, sendSylionError } from '@/lib/http';
+import { sendSuccess, sendError, sendSylionError } from '@/lib/http';
 import { AssistantService } from './assistant.service';
 import { CreateAssistantSchema, UpdateAssistantSchema } from './assistant.types';
 
@@ -21,7 +21,7 @@ export class AssistantController {
       
       return sendSuccess(reply, assistant, 201);
     } catch (error) {
-      return sendSylionError(reply, error as any, request.requestId);
+      return sendSylionError(reply, error as any, (request as any).requestId);
     }
   }
 
@@ -33,7 +33,7 @@ export class AssistantController {
       
       return sendSuccess(reply, assistant);
     } catch (error) {
-      return sendSylionError(reply, error as any, request.requestId);
+      return sendSylionError(reply, error as any, (request as any).requestId);
     }
   }
 
@@ -45,7 +45,7 @@ export class AssistantController {
       
       return sendSuccess(reply, assistants);
     } catch (error) {
-      return sendSylionError(reply, error as any, request.requestId);
+      return sendSylionError(reply, error as any, (request as any).requestId);
     }
   }
 
@@ -58,7 +58,7 @@ export class AssistantController {
       
       return sendSuccess(reply, assistant);
     } catch (error) {
-      return sendSylionError(reply, error as any, request.requestId);
+      return sendSylionError(reply, error as any, (request as any).requestId);
     }
   }
 }

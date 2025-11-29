@@ -60,22 +60,24 @@ export class AssistantService {
       }
 
       // Créer l'assistant
+      const assistantData = {
+        tenantId,
+        name: input.name,
+        description: input.description,
+        isActive: input.isActive ?? true,
+        isDefault: input.isDefault ?? false,
+        model: input.model || 'gemini-1.5-pro',
+        systemPrompt: input.systemPrompt,
+        temperature: String(input.temperature ?? 0.7),
+        maxTokens: input.maxTokens ?? 1024,
+        enableRag: input.enableRag ?? false,
+        ragThreshold: String(input.ragThreshold ?? 0.7),
+        ragMaxResults: input.ragMaxResults ?? 5,
+      };
+      
       const results = await tx
         .insert(schema.assistants)
-        .values({
-          tenantId,
-          name: input.name,
-          description: input.description,
-          isActive: input.isActive ?? true,
-          isDefault: input.isDefault ?? false,
-          model: input.model || 'gemini-1.5-pro',
-          systemPrompt: input.systemPrompt,
-          temperature: input.temperature ?? 0.7,
-          maxTokens: input.maxTokens ?? 1024,
-          enableRag: input.enableRag ?? false,
-          ragThreshold: input.ragThreshold ?? 0.7,
-          ragMaxResults: input.ragMaxResults ?? 5,
-        })
+        .values(assistantData)
         .returning();
 
       const assistant = results[0];
@@ -350,7 +352,7 @@ export class AssistantService {
 
       const assistant = assistantResults[0];
       if (!assistant) {
-        throw new SylionError('Assistant non trouvé ou inactif', {
+        throw new SylionError(ErrorCodes.ASSISTANT_NOT_FOUND, 'Assistant non trouvé ou inactif', {
           details: { assistantId, tenantId }
         });
       }
@@ -376,7 +378,7 @@ export class AssistantService {
 
       const updatedAssistant = results[0];
       if (!updatedAssistant) {
-        throw new SylionError('Erreur lors de la définition de l\'assistant par défaut', {
+        throw new SylionError(ErrorCodes.INTERNAL_SERVER_ERROR, 'Erreur lors de la définition de l\'assistant par défaut', {
           
         });
       }

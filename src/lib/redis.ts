@@ -9,7 +9,7 @@
 
 import Redis from 'ioredis';
 import { config } from '@/config/env';
-import { logger } from '@/lib/logger';
+import { logger } from './logger';
 
 /**
  * Configuration Redis pour l'application principale

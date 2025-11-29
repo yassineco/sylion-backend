@@ -7,7 +7,7 @@
  */
 
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { sendSuccess, sendSylionError, ErrorCodes } from '@/lib/http';
+import { sendSuccess, sendError, sendSylionError, ErrorCodes } from '@/lib/http';
 import { ChannelService } from './channel.service';
 import { CreateChannelSchema, UpdateChannelSchema } from './channel.types';
 
@@ -26,7 +26,7 @@ export class ChannelController {
       
       return sendSuccess(reply, channel, 201);
     } catch (error) {
-      return sendSylionError(reply, error as any, request.requestId);
+      return sendSylionError(reply, error as any, (request as any).requestId);
     }
   }
 
@@ -38,7 +38,7 @@ export class ChannelController {
       
       return sendSuccess(reply, channel);
     } catch (error) {
-      return sendSylionError(reply, error as any, request.requestId);
+      return sendSylionError(reply, error as any, (request as any).requestId);
     }
   }
 
@@ -50,7 +50,7 @@ export class ChannelController {
       
       return sendSuccess(reply, channels);
     } catch (error) {
-      return sendSylionError(reply, error as any, request.requestId);
+      return sendSylionError(reply, error as any, (request as any).requestId);
     }
   }
 
@@ -63,7 +63,7 @@ export class ChannelController {
       
       return sendSuccess(reply, channel);
     } catch (error) {
-      return sendSylionError(reply, error as any, request.requestId);
+      return sendSylionError(reply, error as any, (request as any).requestId);
     }
   }
 }

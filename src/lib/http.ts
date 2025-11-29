@@ -5,7 +5,7 @@
  */
 
 import { FastifyReply } from 'fastify';
-import { logger } from '@/lib/logger';
+import { logger } from './logger';
 
 /**
  * Codes d'erreur standardisés pour Sylion

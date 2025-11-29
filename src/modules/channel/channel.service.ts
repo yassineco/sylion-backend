@@ -65,7 +65,7 @@ export class ChannelService {
 
       const channel = results[0];
       if (!channel) {
-        throw new SylionError('Erreur lors de la création du channel', {
+        throw new SylionError(ErrorCodes.INTERNAL_SERVER_ERROR, 'Erreur lors de la création du channel', {
           
         });
       }
@@ -205,7 +205,7 @@ export class ChannelService {
 
       const channel = results[0];
       if (!channel) {
-        throw new SylionError('Erreur lors de la mise à jour du channel', {
+        throw new SylionError(ErrorCodes.INTERNAL_SERVER_ERROR, 'Erreur lors de la mise à jour du channel', {
           
         });
       }

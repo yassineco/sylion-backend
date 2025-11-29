@@ -5,7 +5,7 @@
  */
 
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { sendSuccess, sendSylionError } from '@/lib/http';
+import { sendSuccess, sendError, sendSylionError } from '@/lib/http';
 import { MessageService } from './message.service';
 import { CreateMessageSchema, UpdateMessageSchema } from './message.types';
 
@@ -21,7 +21,7 @@ export class MessageController {
       
       return sendSuccess(reply, message, 201);
     } catch (error) {
-      return sendSylionError(reply, error as any, request.requestId);
+      return sendSylionError(reply, error as any, (request as any).requestId);
     }
   }
 
@@ -33,7 +33,7 @@ export class MessageController {
       
       return sendSuccess(reply, message);
     } catch (error) {
-      return sendSylionError(reply, error as any, request.requestId);
+      return sendSylionError(reply, error as any, (request as any).requestId);
     }
   }
 
@@ -45,7 +45,7 @@ export class MessageController {
       
       return sendSuccess(reply, messages);
     } catch (error) {
-      return sendSylionError(reply, error as any, request.requestId);
+      return sendSylionError(reply, error as any, (request as any).requestId);
     }
   }
 
@@ -58,7 +58,7 @@ export class MessageController {
       
       return sendSuccess(reply, message);
     } catch (error) {
-      return sendSylionError(reply, error as any, request.requestId);
+      return sendSylionError(reply, error as any, (request as any).requestId);
     }
   }
 }

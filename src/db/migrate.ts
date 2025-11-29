@@ -8,7 +8,7 @@
 
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { db, client } from './index';
-import { logger } from '@/lib/logger';
+import { logger } from '../lib/logger';
 
 async function runMigrations() {
   try {

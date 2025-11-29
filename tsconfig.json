@@ -25,15 +25,15 @@
     "exactOptionalPropertyTypes": false,
     
     /* Module Resolution */
-    "baseUrl": ".",
+    "baseUrl": "src",
     "paths": {
-      "@/*": ["src/*"],
-      "@/app/*": ["src/app/*"],
-      "@/modules/*": ["src/modules/*"],
-      "@/lib/*": ["src/lib/*"],
-      "@/db/*": ["src/db/*"],
-      "@/jobs/*": ["src/jobs/*"],
-      "@/config/*": ["src/config/*"]
+      "@/*": ["*"],
+      "@/app/*": ["app/*"],
+      "@/modules/*": ["modules/*"],
+      "@/lib/*": ["lib/*"],
+      "@/db/*": ["db/*"],
+      "@/jobs/*": ["jobs/*"],
+      "@/config/*": ["config/*"]
     },
     
     /* Output */

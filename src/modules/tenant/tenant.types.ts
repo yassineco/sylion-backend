@@ -117,7 +117,7 @@ export interface TenantWithStats extends Omit<Tenant, 'settings' | 'billingAddre
       storage: number;
     };
   };
-  contactPhone?: string | null;
+  contactPhone: string | null;
   billingAddress?: any;
   webhookUrl?: string | null;
   settings?: any;

@@ -110,7 +110,6 @@ class SylionServer {
           {} as FastifyReply, // Workaround pour le type
           ErrorCodes.TOO_MANY_REQUESTS,
           'Too many requests',
-          429,
           {
             limit: context.max,
             remaining: context.ttl,
@@ -251,7 +250,6 @@ class SylionServer {
           reply,
           ErrorCodes.VALIDATION_ERROR,
           'Validation error',
-          400,
           {
             validationErrors: error.validation,
           },
@@ -264,7 +262,6 @@ class SylionServer {
           reply,
           ErrorCodes.BAD_REQUEST,
           error.message,
-          error.statusCode,
           undefined,
           request.requestId
         );
@@ -275,7 +272,6 @@ class SylionServer {
         reply,
         ErrorCodes.INTERNAL_SERVER_ERROR,
         config.isProd ? 'Internal server error' : error.message,
-        500,
         config.isDev ? { stack: error.stack } : undefined,
         request.requestId
       );
@@ -287,7 +283,6 @@ class SylionServer {
         reply,
         ErrorCodes.NOT_FOUND,
         `Route ${request.method} ${request.url} not found`,
-        404,
         undefined,
         request.requestId
       );

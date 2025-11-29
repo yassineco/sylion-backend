@@ -7,28 +7,27 @@
  * Aucune logique HTTP, uniquement business logic.
  */
 
-import { and, eq, ilike, desc, asc, count, sql } from 'drizzle-orm';
-import { db, withTransaction, type DbTransaction } from '@/db/index';
-import { schema } from '@/db/index';
-import { logger } from '@/lib/logger';
-import { SylionError, ErrorCodes } from '@/lib/http';
-import { parsePagination, createPaginationMeta } from '@/lib/http';
-import { cacheKeys, setCache, getCache, deleteCache, cacheTTL } from '@/lib/redis';
-import type {
-  CreateTenantInput,
-  UpdateTenantInput,
-  UpdateQuotasInput,
-  TenantSearchInput,
-  TenantWithStats,
-  TenantListResponse,
-  TenantStats,
-} from './tenant.types';
+import { db, schema, withTransaction, type DbTransaction } from '@/db/index';
 import type { Tenant } from '@/db/schema';
+import { createPaginationMeta, ErrorCodes, parsePagination, SylionError } from '@/lib/http';
+import { logger } from '@/lib/logger';
+import { cacheKeys, cacheTTL, deleteCache, getCache, setCache } from '@/lib/redis';
+import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
+import type {
+    CreateTenantInput,
+    TenantListResponse,
+    TenantSearchInput,
+    TenantStats,
+    TenantWithStats,
+    UpdateQuotasInput,
+    UpdateTenantInput,
+} from './tenant.types';
 
 /**
  * Service pour la gestion des tenants
  */
 export class TenantService {
+  private db = db;
   
   /**
    * Créer un nouveau tenant
@@ -180,7 +179,7 @@ export class TenantService {
           .limit(1);
 
         if (slugExistsResults.length > 0) {
-          throw new SylionError('Un tenant avec ce slug existe déjà', {
+          throw new SylionError(ErrorCodes.TENANT_SLUG_EXISTS, 'Un tenant avec ce slug existe déjà', {
             details: { slug: input.slug }
           });
         }
@@ -213,7 +212,7 @@ export class TenantService {
 
       const tenant = results[0];
       if (!tenant) {
-        throw new SylionError('Erreur lors de la mise à jour du tenant', {
+        throw new SylionError(ErrorCodes.INTERNAL_SERVER_ERROR, 'Erreur lors de la mise à jour du tenant', {
           
         });
       }
@@ -357,15 +356,15 @@ export class TenantService {
    * Rechercher des tenants avec pagination
    */
   async searchTenants(input: TenantSearchInput): Promise<TenantListResponse> {
-    const { page = 1, limit = 10, search, plan, isActive, sortBy = 'createdAt', sortOrder = 'desc' } = input;
+    const { page: inputPage = 1, limit: inputLimit = 10, search, plan, isActive, sortBy = 'createdAt', sortOrder = 'desc' } = input;
     
-    const { page, limit, offset } = parsePagination({ page, limit });
+    const { page, limit, offset } = parsePagination({ page: inputPage, limit: inputLimit });
     
     // Utiliser les valeurs parsées
     const validatedLimit = limit;
 
     // Construire la requête
-    let query = db
+    const baseQuery = this.db
       .select({
         id: schema.tenants.id,
         name: schema.tenants.name,
@@ -386,7 +385,7 @@ export class TenantService {
       .from(schema.tenants);
 
     // Appliquer les filtres
-    const conditions = [];
+    const conditions: any[] = [];
     
     if (search) {
       conditions.push(
@@ -402,36 +401,62 @@ export class TenantService {
       conditions.push(eq(schema.tenants.isActive, isActive));
     }
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+    // Construire le where
+    const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
+
+    // Construire l'order by
+    let sortColumn;
+    switch (sortBy) {
+      case 'name':
+        sortColumn = schema.tenants.name;
+        break;
+      case 'plan':
+        sortColumn = schema.tenants.plan;
+        break;
+      case 'lastActiveAt':
+        sortColumn = schema.tenants.lastActiveAt;
+        break;
+      default:
+        sortColumn = schema.tenants.createdAt;
+        break;
     }
+    const orderBy = sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn);
 
-    // Appliquer le tri
-    const sortColumn = schema.tenants[sortBy as keyof typeof schema.tenants];
-    if (sortColumn) {
-      query = query.orderBy(sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn));
-    }
-
-    // Paginer
-    query = query.limit(validatedLimit).offset(offset);
-
-    // Exécuter la requête
-    const results = await query;
+    // Exécuter la requête avec toutes les conditions
+    const results = await this.db
+      .select({
+        id: schema.tenants.id,
+        name: schema.tenants.name,
+        slug: schema.tenants.slug,
+        plan: schema.tenants.plan,
+        isActive: schema.tenants.isActive,
+        quotaMessages: schema.tenants.quotaMessages,
+        quotaAiRequests: schema.tenants.quotaAiRequests,
+        quotaStorageMb: schema.tenants.quotaStorageMb,
+        usedMessages: schema.tenants.usedMessages,
+        usedAiRequests: schema.tenants.usedAiRequests,
+        usedStorageMb: schema.tenants.usedStorageMb,
+        contactEmail: schema.tenants.contactEmail,
+        createdAt: schema.tenants.createdAt,
+        updatedAt: schema.tenants.updatedAt,
+        lastActiveAt: schema.tenants.lastActiveAt,
+      })
+      .from(schema.tenants)
+      .where(whereCondition)
+      .orderBy(orderBy)
+      .limit(validatedLimit)
+      .offset(offset);
 
     // Compter le total
-    let countQuery = db
-      .select({ count: count() })
-      .from(schema.tenants);
-
-    if (conditions.length > 0) {
-      countQuery = countQuery.where(and(...conditions));
-    }
-
-    const countResults = await countQuery;
+    const countResults = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.tenants)
+      .where(whereCondition);
+      
     const total = countResults[0]?.count || 0;
 
     // Créer la réponse
-    const tenants: TenantWithStats[] = results.map(tenant => ({
+    const tenants: TenantWithStats[] = results.map((tenant: any) => ({
       ...tenant,
       stats: {
         usagePercentages: {
@@ -489,8 +514,8 @@ export class TenantService {
 
       const tenant = results[0];
       if (!tenant) {
-        throw new SylionError('Erreur lors de la mise à jour des quotas', {
-          
+        throw new SylionError(ErrorCodes.INTERNAL_SERVER_ERROR, 'Erreur lors de la mise à jour des quotas', {
+          details: { tenantId }
         });
       }
 
@@ -504,6 +529,189 @@ export class TenantService {
       });
 
       return tenant;
+    });
+  }
+
+  /**
+   * Mettre à jour les quotas d'un tenant
+   */
+  async updateTenantQuotas(tenantId: string, input: UpdateQuotasInput): Promise<Tenant> {
+    return this.db.transaction(async (tx) => {
+      const tenant = await tx
+        .select()
+        .from(schema.tenants)
+        .where(eq(schema.tenants.id, tenantId))
+        .limit(1);
+
+      if (!tenant.length) {
+        throw new SylionError(ErrorCodes.TENANT_NOT_FOUND, 'Tenant non trouvé', {
+          details: { tenantId }
+        });
+      }
+
+      // Mettre à jour les quotas
+      const updateData: Record<string, any> = {
+        updatedAt: sql`NOW()`,
+      };
+
+      if (input.quotaMessages !== undefined) updateData['quotaMessages'] = input.quotaMessages;
+      if (input.quotaAiRequests !== undefined) updateData['quotaAiRequests'] = input.quotaAiRequests;
+      if (input.quotaStorageMb !== undefined) updateData['quotaStorageMb'] = input.quotaStorageMb;
+
+      const results = await tx
+        .update(schema.tenants)
+        .set(updateData)
+        .where(eq(schema.tenants.id, tenantId))
+        .returning();
+
+      const updatedTenant = results[0];
+      if (!updatedTenant) {
+        throw new SylionError(ErrorCodes.INTERNAL_SERVER_ERROR, 'Erreur lors de la mise à jour des quotas', {
+          details: { tenantId }
+        });
+      }
+
+      // Invalider les caches
+      await deleteCache(cacheKeys.tenant(tenantId));
+      await deleteCache(cacheKeys.tenantUsage(tenantId));
+
+      logger.info('Tenant quotas updated successfully', { 
+        tenantId,
+        quotas: input
+      });
+
+      return updatedTenant;
+    });
+  }
+
+  /**
+   * Toggle le statut actif/inactif d'un tenant
+   */
+  async toggleTenantStatus(tenantId: string, isActive: boolean): Promise<Tenant> {
+    return this.db.transaction(async (tx: DbTransaction) => {
+      const tenant = await tx
+        .select()
+        .from(schema.tenants)
+        .where(eq(schema.tenants.id, tenantId))
+        .limit(1);
+
+      if (!tenant.length) {
+        throw new SylionError(ErrorCodes.TENANT_NOT_FOUND, 'Tenant non trouvé', {
+          details: { tenantId }
+        });
+      }
+
+      const results = await tx
+        .update(schema.tenants)
+        .set({
+          isActive,
+          updatedAt: sql`NOW()`,
+        })
+        .where(eq(schema.tenants.id, tenantId))
+        .returning();
+
+      const updatedTenant = results[0];
+      if (!updatedTenant) {
+        throw new SylionError(ErrorCodes.TENANT_CREATE_FAILED, 'Erreur lors de la mise à jour du statut', {
+          details: { tenantId }
+        });
+      }
+
+      // Invalider les caches
+      await deleteCache(cacheKeys.tenant(tenantId));
+
+      logger.info('Tenant status toggled', { 
+        tenantId,
+        isActive,
+      });
+
+      return updatedTenant;
+    });
+  }
+
+  /**
+   * Récupérer les statistiques d'un tenant
+   */
+  async getTenantStats(tenantId: string): Promise<any> {
+    return this.db.transaction(async (tx: DbTransaction) => {
+      const tenant = await tx
+        .select()
+        .from(schema.tenants)
+        .where(eq(schema.tenants.id, tenantId))
+        .limit(1);
+
+      if (!tenant.length) {
+        throw new SylionError(ErrorCodes.TENANT_NOT_FOUND, 'Tenant non trouvé', {
+          details: { tenantId }
+        });
+      }
+
+      const tenantData = tenant[0];
+      if (!tenantData) {
+        throw new SylionError(ErrorCodes.TENANT_NOT_FOUND, 'Tenant non trouvé', {
+          details: { tenantId }
+        });
+      }
+
+      // Récupérer les stats de base du tenant
+      const stats = {
+        tenant: tenantData,
+        usage: {
+          messages: tenantData.usedMessages,
+          aiRequests: tenantData.usedAiRequests,
+          storageMb: tenantData.usedStorageMb,
+        },
+        quotas: {
+          messages: tenantData.quotaMessages,
+          aiRequests: tenantData.quotaAiRequests,
+          storageMb: tenantData.quotaStorageMb,
+        },
+        remainingQuotas: {
+          messages: Math.max(0, tenantData.quotaMessages - tenantData.usedMessages),
+          aiRequests: Math.max(0, tenantData.quotaAiRequests - tenantData.usedAiRequests),
+          storageMb: Math.max(0, tenantData.quotaStorageMb - tenantData.usedStorageMb),
+        },
+      };
+
+      return stats;
+    });
+  }
+
+  /**
+   * Vérifier si un tenant peut utiliser une certaine quantité d'une ressource
+   */
+  async checkQuota(tenantId: string, type: 'messages' | 'aiRequests' | 'storageMb', amount: number): Promise<boolean> {
+    return this.db.transaction(async (tx: DbTransaction) => {
+      const tenant = await tx
+        .select()
+        .from(schema.tenants)
+        .where(eq(schema.tenants.id, tenantId))
+        .limit(1);
+
+      if (!tenant.length) {
+        throw new SylionError(ErrorCodes.TENANT_NOT_FOUND, 'Tenant non trouvé', {
+          details: { tenantId }
+        });
+      }
+
+      const tenantData = tenant[0];
+      if (!tenantData) {
+        throw new SylionError(ErrorCodes.TENANT_NOT_FOUND, 'Tenant non trouvé', {
+          details: { tenantId }
+        });
+      }
+
+      // Vérifier selon le type
+      switch (type) {
+        case 'messages':
+          return (tenantData.usedMessages + amount) <= tenantData.quotaMessages;
+        case 'aiRequests':
+          return (tenantData.usedAiRequests + amount) <= tenantData.quotaAiRequests;
+        case 'storageMb':
+          return (tenantData.usedStorageMb + amount) <= tenantData.quotaStorageMb;
+        default:
+          return false;
+      }
     });
   }
 }
