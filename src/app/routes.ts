@@ -16,6 +16,7 @@ import { registerChannelRoutes } from '@/modules/channel/channel.routes';
 import { registerAssistantRoutes } from '@/modules/assistant/assistant.routes';
 import { registerConversationRoutes } from '@/modules/conversation/conversation.routes';
 import { registerMessageRoutes } from '@/modules/message/message.routes';
+import { registerWhatsAppRoutes } from '@/modules/whatsapp/whatsapp.routes';
 
 /**
  * Enregistrement de toutes les routes avec préfixes API versionnés
@@ -49,77 +50,9 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     // Webhooks (sans versioning)
     // ================================
     await fastify.register(async function webhooks(fastify: FastifyInstance) {
-      // Webhook WhatsApp (360dialog)
-      await fastify.register(async function whatsappWebhook(fastify: FastifyInstance) {
-        // Verification endpoint pour WhatsApp
-        fastify.get('/verify', {
-          schema: {
-            tags: ['WhatsApp'],
-            summary: 'WhatsApp webhook verification',
-            querystring: {
-              type: 'object',
-              properties: {
-                'hub.mode': { type: 'string' },
-                'hub.challenge': { type: 'string' },
-                'hub.verify_token': { type: 'string' },
-              },
-              required: ['hub.mode', 'hub.challenge', 'hub.verify_token'],
-            },
-            response: {
-              200: { type: 'string' },
-              403: { type: 'object' },
-            },
-          },
-        }, async (request, reply) => {
-          const { 
-            'hub.mode': mode, 
-            'hub.challenge': challenge, 
-            'hub.verify_token': verifyToken 
-          } = request.query as any;
-
-          logger.info('WhatsApp webhook verification attempt', {
-            mode,
-            verifyToken: verifyToken ? '***' : undefined,
-          });
-
-          // Ici, on devra valider le verify token avec la configuration du channel
-          // Pour l'instant, on accepte toutes les vérifications en développement
-          if (mode === 'subscribe') {
-            logger.info('WhatsApp webhook verified successfully');
-            return reply.status(200).send(challenge);
-          }
-
-          logger.warn('WhatsApp webhook verification failed');
-          return reply.status(403).send({ error: 'Forbidden' });
-        });
-
-        // Endpoint pour recevoir les messages WhatsApp
-        fastify.post('/message', {
-          schema: {
-            tags: ['WhatsApp'],
-            summary: 'Receive WhatsApp messages',
-            body: {
-              type: 'object',
-              // Le schéma complet sera défini dans le module message
-            },
-            response: {
-              200: { type: 'object' },
-              400: { type: 'object' },
-            },
-          },
-        }, async (request, reply) => {
-          logger.info('Received WhatsApp webhook', {
-            requestId: request.requestId,
-            body: JSON.stringify(request.body).substring(0, 200),
-          });
-
-          // Le traitement sera délégué au controller de message
-          // Pour l'instant, on retourne un OK
-          return reply.status(200).send({ status: 'received' });
-        });
-
-      }, { prefix: '/whatsapp' });
-
+      // Routes WhatsApp (webhook + gestion)
+      await fastify.register(registerWhatsAppRoutes, { prefix: '/whatsapp' });
+      
     }, { prefix: '/webhooks' });
 
     // ================================

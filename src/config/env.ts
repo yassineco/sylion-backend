@@ -40,6 +40,7 @@ const envSchema = z.object({
   // ================================
   // WhatsApp API (360dialog)
   // ================================
+  WHATSAPP_API_URL: z.string().url('WHATSAPP_API_URL must be a valid URL').default('https://waba-v2.360dialog.io'),
   WHATSAPP_API_KEY: z.string().min(20, 'WHATSAPP_API_KEY is required and must be valid'),
   WHATSAPP_VERIFY_TOKEN: z.string().min(8, 'WHATSAPP_VERIFY_TOKEN must be at least 8 characters'),
   WHATSAPP_WEBHOOK_URL: z.string().url('WHATSAPP_WEBHOOK_URL must be a valid URL').optional(),
@@ -57,6 +58,11 @@ const envSchema = z.object({
   VERTEX_AI_LOCATION: z.string().default('us-central1'),
   VERTEX_AI_MODEL: z.string().default('gemini-1.5-pro'),
   VERTEX_EMBEDDING_MODEL: z.string().default('text-embedding-004'),
+  
+  // ================================
+  // Queue Configuration
+  // ================================
+  INCOMING_MESSAGES_QUEUE_NAME: z.string().default('incomingMessages'),
   
   // ================================
   // Authentication & Security
@@ -164,6 +170,7 @@ export const config = {
    * Configuration WhatsApp
    */
   whatsapp: {
+    apiUrl: env.WHATSAPP_API_URL,
     apiKey: env.WHATSAPP_API_KEY,
     verifyToken: env.WHATSAPP_VERIFY_TOKEN,
     webhookUrl: env.WHATSAPP_WEBHOOK_URL,

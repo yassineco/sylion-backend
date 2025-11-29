@@ -11,23 +11,22 @@
 
 ## 📅 1. Informations générales
 
-- **Période couverte :** 29 novembre 2025  
-- **Auteur :** Yassine & GitHub Copilot
-- **Version du rapport :** v1.0 - Structure Backend Complète
-- **Branche / Feature :** main - Infrastructure Initiale  
+- **Période couverte :** [DATE_DEBUT] - [DATE_FIN]  
+- **Auteur :** [NOM_AUTEUR]
+- **Version du rapport :** v[X.Y] - [TITRE_VERSION]
+- **Branche / Feature :** [NOM_BRANCHE] - [DESCRIPTION_FEATURE]  
 
 ---
 
 ## 🚀 2. Résumé exécutif
 
 > 5 à 8 lignes maximum.  
-> Ce que j’ai accompli + état global du projet + points clés.
+> Ce que j'ai accompli + état global du projet + points clés.
 
-- **✅ Correction des erreurs TypeScript** : Résolution des imports circulaires et problèmes de modules
-- **✅ Configuration VS Code améliorée** : Ajout de settings.json et tsconfig pour meilleure DX
-- **✅ Imports standardisés** : Migration vers chemins relatifs pour éviter problèmes compilation
-- **✅ Project entièrement fonctionnel** : Compilation TypeScript sans erreurs, serveur prêt
-- **🚀 Architecture backend complète** : 5 modules opérationnels avec validation Zod et gestion d'erreurs  
+- **✅ [ACCOMPLISSEMENT_1]** : [Description courte]
+- **✅ [ACCOMPLISSEMENT_2]** : [Description courte]  
+- **✅ [ACCOMPLISSEMENT_3]** : [Description courte]
+- **🚀 [POINT_CLE]** : [Description importante]
 
 ---
 
@@ -140,7 +139,7 @@
 - **Fastify vs Express** : Choisi Fastify pour performance native et TypeScript first-class
 - **Drizzle vs Prisma** : Drizzle pour contrôle SQL total et performance sur gros volumes
 - **BullMQ séparé** : Redis dédié jobs pour éviter conflits avec cache applicatif
-- **Imports relatifs vs alias** : Migration vers chemins relatifs pour éviter problèmes compilation
+- **Imports alias @/* restaurés** : Configuration tsconfig corrigée pour respecter ENGINEERING_RULES.md
 - **Configuration VS Code** : Settings dédiés pour améliorer DX TypeScript
 - **Multi-tenant par tenant_id** : Isolation données par colonne plutôt que base séparée  
 
@@ -149,24 +148,17 @@
 ## 🧪 10. Tests, bugs & éléments à vérifier
 
 ### Bugs rencontrés :
-- **✅ TypeScript imports alias (@/)** : Erreurs résolution modules @/lib dans tenant.controller.ts
-- **✅ Module resolution** : TenantService non trouvé malgré existence du fichier
-- **✅ Path aliases compilation** : Imports @/ causaient erreurs dans VS Code IntelliSense
-- **❌ Controller return types** : Promise<FastifyReply> causait erreurs 'never'
-- **❌ Path aliases compilation** : Résolution modules échouait en compilation isolée
+- **✅ [BUG_1]** : [Description et impact]
+- **✅ [BUG_2]** : [Description et impact]
+- **❌ [BUG_EN_COURS]** : [Description - à corriger]
 
 ### Correctifs apportés :
-- **✅ Imports relatifs tenant.controller** : Remplacé @/lib/http par ../../lib/http
-- **✅ Imports relatifs tenant.service** : Migration complète vers chemins relatifs
-- **✅ Configuration VS Code** : Ajout .vscode/settings.json et tsconfig.json
-- **✅ Compilation validée** : npm run type-check passe sans erreurs
-- **✅ Signatures controllers** : Changé Promise<FastifyReply> → Promise<void>
-- **✅ Validation compilation** : Utilise npx tsc --noEmit pour test complet
+- **✅ [CORRECTIF_1]** : [Action prise et résultat]
+- **✅ [CORRECTIF_2]** : [Action prise et résultat]
 
 ### Points à tester :
-- **🧪 Démarrage serveur** : Test complet avec docker-compose up
-- **🧪 Routes API** : Validation endpoints avec données réelles
-- **🧪 Base de données** : Migrations et seed data  
+- **🧪 [TEST_1]** : [Ce qui doit être testé]
+- **🧪 [TEST_2]** : [Ce qui doit être testé]  
 
 ---
 
@@ -175,11 +167,11 @@
 > Idéal pour lancer une discussion avec Copilot ou ChatGPT.  
 > Copie simplement cette section dans Copilot → il saura quoi faire.
 
-- **Architecture WhatsApp** : Quelle approche pour gérer les webhooks et retry logic ?
-- **Stratégie RAG** : Comment optimiser le chunking et l'indexation pour conversations longues ?
-- **Authentification** : JWT + RBAC ou OAuth2 avec Google Workspace ?
-- **Monitoring** : Quels KPIs critiques suivre pour performance et usage ?
-- **Scaling** : Comment préparer l'architecture pour 1000+ tenants simultanés ?  
+- **[QUESTION_TECHNIQUE_1]** : [Description du défi ou choix à faire]
+- **[QUESTION_ARCHITECTURE_2]** : [Décision architecturale en suspens]
+- **[QUESTION_BUSINESS_3]** : [Impact business ou priorité à clarifier]
+- **[QUESTION_PERFORMANCE_4]** : [Optimisation ou scaling à considérer]
+- **[QUESTION_SECURITY_5]** : [Aspect sécurité ou conformité à adresser]  
 
 ---
 

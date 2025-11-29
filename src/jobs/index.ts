@@ -44,6 +44,12 @@ const baseWorkerConfig: Omit<WorkerOptions, 'connection'> = {
  * Définition des types de jobs
  */
 export interface JobTypes {
+  // Message Processing Jobs
+  'incoming-message': {
+    messageData: import('@/modules/whatsapp/whatsapp.types').NormalizedIncomingMessage;
+    timestamp: string;
+  };
+  
   // WhatsApp Jobs
   'whatsapp:send-message': {
     tenantId: string;
@@ -142,6 +148,7 @@ export interface JobTypes {
  * Noms des queues
  */
 export const QueueNames = {
+  INCOMING_MESSAGES: 'incoming-messages',
   WHATSAPP: 'whatsapp',
   AI: 'ai',
   RAG: 'rag',
@@ -152,6 +159,15 @@ export const QueueNames = {
  * Création des queues
  */
 export const queues = {
+  incomingMessages: new Queue(QueueNames.INCOMING_MESSAGES, {
+    ...baseQueueConfig,
+    defaultJobOptions: {
+      ...baseQueueConfig.defaultJobOptions,
+      priority: 20, // Très haute priorité pour les messages entrants
+      delay: 0,
+    },
+  }),
+
   whatsapp: new Queue(QueueNames.WHATSAPP, {
     ...baseQueueConfig,
     defaultJobOptions: {
@@ -199,13 +215,6 @@ export const queues = {
 export type JobHandler<T extends keyof JobTypes> = (
   job: Job<JobTypes[T]>
 ) => Promise<any>;
-
-/**
- * Registre des handlers de jobs
- */
-const jobHandlers: Partial<{
-  [K in keyof JobTypes]: JobHandler<K>;
-}> = {};
 
 /**
  * Helper pour enregistrer un handler de job
@@ -256,6 +265,7 @@ export async function addJob<T extends keyof JobTypes>(
  * Helper pour déterminer la queue selon le type de job
  */
 function getQueueNameForJobType(jobType: keyof JobTypes): keyof typeof queues {
+  if (jobType.startsWith('incoming-message')) return 'incomingMessages';
   if (jobType.startsWith('whatsapp:')) return 'whatsapp';
   if (jobType.startsWith('ai:')) return 'ai';
   if (jobType.startsWith('rag:')) return 'rag';
@@ -271,6 +281,48 @@ export async function startWorkers(): Promise<Worker[]> {
   logger.info('Starting BullMQ workers...');
 
   const workers: Worker[] = [];
+
+  // Worker pour les messages entrants (priorité la plus haute)
+  const incomingMessagesWorker = new Worker(
+    QueueNames.INCOMING_MESSAGES,
+    async (job: Job) => {
+      const jobType = job.name as keyof JobTypes;
+      const handler = jobHandlers[jobType];
+      
+      if (!handler) {
+        throw new Error(`No handler found for job type: ${jobType}`);
+      }
+      
+      logger.jobLog(jobType, 'started', { jobId: job.id });
+      const startTime = Date.now();
+      
+      try {
+        const result = await handler(job);
+        const duration = Date.now() - startTime;
+        
+        logger.jobLog(jobType, 'completed', { 
+          jobId: job.id, 
+          duration 
+        });
+        
+        return result;
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        
+        logger.jobLog(jobType, 'failed', { 
+          jobId: job.id, 
+          duration 
+        });
+        
+        throw error;
+      }
+    },
+    {
+      ...baseWorkerConfig,
+      connection: redisSubscriber,
+      concurrency: 5, // Concurrence modérée pour le traitement principal
+    }
+  );
 
   // Worker pour WhatsApp
   const whatsappWorker = new Worker(
@@ -440,11 +492,11 @@ export async function startWorkers(): Promise<Worker[]> {
     }
   );
 
-  workers.push(whatsappWorker, aiWorker, ragWorker, systemWorker);
+  workers.push(incomingMessagesWorker, whatsappWorker, aiWorker, ragWorker, systemWorker);
 
   // Configuration des événements pour tous les workers
   workers.forEach((worker, index) => {
-    const workerName = ['WhatsApp', 'AI', 'RAG', 'System'][index];
+    const workerName = ['Incoming Messages', 'WhatsApp', 'AI', 'RAG', 'System'][index];
     
     worker.on('ready', () => {
       logger.info(`Worker ${workerName} ready`);
@@ -490,6 +542,95 @@ export async function stopWorkers(workers: Worker[]): Promise<void> {
   );
   
   logger.info('All BullMQ workers stopped');
+}
+
+/**
+ * ================================
+ * Job Handlers - Enregistrement et imports
+ * ================================
+ */
+
+// Import des handlers de jobs
+import { processIncomingMessage } from './messageProcessor.worker';
+
+/**
+ * Mapping des handlers par type de job
+ */
+const jobHandlers: Record<string, (job: Job) => Promise<any>> = {
+  // Messages entrants
+  'incoming-message': processIncomingMessage,
+
+  // WhatsApp jobs - à implémenter
+  'whatsapp:send-message': async (job) => {
+    throw new Error('WhatsApp send-message handler not implemented');
+  },
+  'whatsapp:process-status': async (job) => {
+    throw new Error('WhatsApp process-status handler not implemented');
+  },
+
+  // AI jobs - à implémenter
+  'ai:process-message': async (job) => {
+    throw new Error('AI process-message handler not implemented');
+  },
+  'ai:generate-response': async (job) => {
+    throw new Error('AI generate-response handler not implemented');
+  },
+
+  // RAG jobs - à implémenter
+  'rag:index-document': async (job) => {
+    throw new Error('RAG index-document handler not implemented');
+  },
+  'rag:search-similar': async (job) => {
+    throw new Error('RAG search-similar handler not implemented');
+  },
+
+  // System jobs - à implémenter
+  'system:cleanup-old-jobs': async (job) => {
+    throw new Error('System cleanup handler not implemented');
+  },
+  'system:send-notifications': async (job) => {
+    throw new Error('System notifications handler not implemented');
+  },
+};
+
+/**
+ * ================================
+ * Helper pour ajouter un message entrant à la queue
+ * ================================
+ */
+export async function addIncomingMessageJob(
+  messageData: JobTypes['incoming-message']['messageData']
+): Promise<void> {
+  try {
+    const job = await queues.incomingMessages.add(
+      'incoming-message',
+      {
+        messageData,
+        timestamp: new Date().toISOString(),
+      },
+      {
+        priority: 20,
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+      }
+    );
+
+    logger.info('Incoming message job added to queue', {
+      jobId: job.id,
+      messageId: messageData.externalId,
+      from: messageData.from.phoneNumber,
+    });
+
+  } catch (error) {
+    logger.error('Failed to add incoming message job to queue', {
+      error: error instanceof Error ? error.message : String(error),
+      messageId: messageData.externalId,
+    });
+    throw error;
+  }
 }
 
 /**
