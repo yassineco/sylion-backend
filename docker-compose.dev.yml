@@ -1,0 +1,74 @@
+# ================================
+# Docker Compose - Development Environment
+# ================================
+version: '3.8'
+
+services:
+  # ================================
+  # PostgreSQL Database (Development)
+  # ================================
+  postgres-dev:
+    image: pgvector/pgvector:pg15
+    container_name: sylion-postgres-dev
+    environment:
+      POSTGRES_DB: sylion_dev
+      POSTGRES_USER: sylion_dev
+      POSTGRES_PASSWORD: dev_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./scripts/init-extensions.sql:/docker-entrypoint-initdb.d/init-extensions.sql:ro
+    ports:
+      - "5433:5432"
+    networks:
+      - sylion-dev-network
+    restart: unless-stopped
+
+  # ================================
+  # Redis Cache & Queue (Development)
+  # ================================
+  redis-dev:
+    image: redis:7-alpine
+    container_name: sylion-redis-dev
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_dev_data:/data
+    ports:
+      - "6380:6379"
+    networks:
+      - sylion-dev-network
+    restart: unless-stopped
+
+  # ================================
+  # Development Tools
+  # ================================
+  # Redis Commander (Web UI for Redis)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: sylion-redis-ui
+    environment:
+      REDIS_HOSTS: dev:redis-dev:6379
+    ports:
+      - "8081:8081"
+    networks:
+      - sylion-dev-network
+    depends_on:
+      - redis-dev
+    restart: unless-stopped
+
+# ================================
+# Networks
+# ================================
+networks:
+  sylion-dev-network:
+    driver: bridge
+    name: sylion-dev-network
+
+# ================================
+# Volumes
+# ================================
+volumes:
+  postgres_dev_data:
+    name: sylion-postgres-dev-data
+  redis_dev_data:
+    name: sylion-redis-dev-data
