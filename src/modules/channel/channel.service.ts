@@ -7,17 +7,16 @@
  * Aucune logique HTTP, uniquement business logic.
  */
 
-import { and, eq, desc, sql } from 'drizzle-orm';
-import { db, withTransaction } from '@/db/index';
-import { schema } from '@/db/index';
-import { logger } from '@/lib/logger';
-import { SylionError, ErrorCodes } from '@/lib/http';
-import { cacheKeys, setCache, getCache, deleteCache, cacheTTL } from '@/lib/redis';
-import type {
-  CreateChannelInput,
-  UpdateChannelInput,
-} from './channel.types';
+import { db, schema, withTransaction } from '@/db/index';
 import type { Channel } from '@/db/schema';
+import { ErrorCodes, SylionError } from '@/lib/http';
+import { logger } from '@/lib/logger';
+import { cacheKeys, cacheTTL, deleteCache, getCache, setCache } from '@/lib/redis';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import type {
+    CreateChannelInput,
+    UpdateChannelInput,
+} from './channel.types';
 
 /**
  * Service pour la gestion des channels
@@ -84,21 +83,24 @@ export class ChannelService {
   }
 
   /**
-   * Obtenir un channel par ID
+   * Obtenir un channel par ID (sécurisé multi-tenant)
    */
-  async getChannelById(id: string): Promise<Channel | null> {
+  async getChannelById(id: string, tenantId: string): Promise<Channel | null> {
     const cacheKey = cacheKeys.channel(id);
     
     // Essayer le cache d'abord
     const cached = await getCache<Channel>(cacheKey);
-    if (cached) {
+    if (cached && cached.tenantId === tenantId) {
       return cached;
     }
 
     const results = await db
       .select()
       .from(schema.channels)
-      .where(eq(schema.channels.id, id))
+      .where(and(
+        eq(schema.channels.id, id),
+        eq(schema.channels.tenantId, tenantId)
+      ))
       .limit(1);
 
     const channel = results[0] || null;
@@ -163,23 +165,26 @@ export class ChannelService {
   }
 
   /**
-   * Mettre à jour un channel
+   * Mettre à jour un channel (sécurisé multi-tenant)
    */
-  async updateChannel(id: string, input: UpdateChannelInput): Promise<Channel> {
-    logger.info('Updating channel', { channelId: id });
+  async updateChannel(id: string, tenantId: string, input: UpdateChannelInput): Promise<Channel> {
+    logger.info('Updating channel', { channelId: id, tenantId });
 
     return await withTransaction(async (tx) => {
-      // Vérifier l'existence du channel
+      // Vérifier l'existence du channel ET l'appartenance au tenant
       const existingResults = await tx
         .select()
         .from(schema.channels)
-        .where(eq(schema.channels.id, id))
+        .where(and(
+          eq(schema.channels.id, id),
+          eq(schema.channels.tenantId, tenantId)
+        ))
         .limit(1);
 
       const existing = existingResults[0];
       if (!existing) {
-        throw new SylionError(ErrorCodes.CHANNEL_NOT_FOUND, 'Channel non trouvé', {
-          details: { channelId: id }
+        throw new SylionError(ErrorCodes.CHANNEL_NOT_FOUND, 'Channel non trouvé ou accès interdit', {
+          details: { channelId: id, tenantId }
         });
       }
 
@@ -226,23 +231,26 @@ export class ChannelService {
   }
 
   /**
-   * Supprimer un channel (soft delete)
+   * Supprimer un channel (soft delete, sécurisé multi-tenant)
    */
-  async deleteChannel(id: string): Promise<void> {
-    logger.info('Deleting channel', { channelId: id });
+  async deleteChannel(id: string, tenantId: string): Promise<void> {
+    logger.info('Deleting channel', { channelId: id, tenantId });
 
     return await withTransaction(async (tx) => {
-      // Vérifier l'existence du channel
+      // Vérifier l'existence du channel ET l'appartenance au tenant
       const existingResults = await tx
         .select()
         .from(schema.channels)
-        .where(eq(schema.channels.id, id))
+        .where(and(
+          eq(schema.channels.id, id),
+          eq(schema.channels.tenantId, tenantId)
+        ))
         .limit(1);
 
       const existing = existingResults[0];
       if (!existing) {
-        throw new SylionError(ErrorCodes.CHANNEL_NOT_FOUND, 'Channel non trouvé', {
-          details: { channelId: id }
+        throw new SylionError(ErrorCodes.CHANNEL_NOT_FOUND, 'Channel non trouvé ou accès interdit', {
+          details: { channelId: id, tenantId }
         });
       }
 

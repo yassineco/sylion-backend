@@ -7,17 +7,16 @@
  * Aucune logique HTTP, uniquement business logic.
  */
 
-import { and, eq, desc, sql, count } from 'drizzle-orm';
-import { db, withTransaction } from '@/db/index';
-import { schema } from '@/db/index';
+import { db, schema, withTransaction } from '@/db/index';
+import type { Assistant, Channel, Conversation } from '@/db/schema';
+import { ErrorCodes, SylionError } from '@/lib/http';
 import { logger } from '@/lib/logger';
-import { SylionError, ErrorCodes } from '@/lib/http';
-import { cacheKeys, setCache, getCache, deleteCache, cacheTTL } from '@/lib/redis';
+import { cacheKeys, cacheTTL, deleteCache, getCache, setCache } from '@/lib/redis';
+import { and, count, desc, eq, sql } from 'drizzle-orm';
 import type {
-  CreateConversationInput,
-  UpdateConversationInput,
+    CreateConversationInput,
+    UpdateConversationInput,
 } from './conversation.types';
-import type { Conversation } from '@/db/schema';
 
 /**
  * Service pour la gestion des conversations
@@ -126,21 +125,24 @@ export class ConversationService {
   }
 
   /**
-   * Obtenir une conversation par ID
+   * Obtenir une conversation par ID (sécurisé multi-tenant)
    */
-  async getConversationById(id: string): Promise<Conversation | null> {
+  async getConversationById(id: string, tenantId: string): Promise<Conversation | null> {
     const cacheKey = cacheKeys.conversation(id);
     
     // Essayer le cache d'abord
     const cached = await getCache<Conversation>(cacheKey);
-    if (cached) {
+    if (cached && cached.tenantId === tenantId) {
       return cached;
     }
 
     const results = await db
       .select()
       .from(schema.conversations)
-      .where(eq(schema.conversations.id, id))
+      .where(and(
+        eq(schema.conversations.id, id),
+        eq(schema.conversations.tenantId, tenantId)
+      ))
       .limit(1);
 
     const conversation = results[0] || null;
@@ -154,9 +156,13 @@ export class ConversationService {
   }
 
   /**
-   * Obtenir une conversation avec les détails des relations
+   * Obtenir une conversation avec les détails des relations (sécurisé multi-tenant)
    */
-  async getConversationWithDetails(id: string): Promise<any | null> {
+  async getConversationWithDetails(id: string, tenantId: string): Promise<{
+    conversation: Conversation;
+    channel: Channel;
+    assistant: Assistant;
+  } | null> {
     const results = await db
       .select({
         conversation: schema.conversations,
@@ -166,7 +172,10 @@ export class ConversationService {
       .from(schema.conversations)
       .innerJoin(schema.channels, eq(schema.conversations.channelId, schema.channels.id))
       .innerJoin(schema.assistants, eq(schema.conversations.assistantId, schema.assistants.id))
-      .where(eq(schema.conversations.id, id))
+      .where(and(
+        eq(schema.conversations.id, id),
+        eq(schema.conversations.tenantId, tenantId)
+      ))
       .limit(1);
 
     return results[0] || null;
@@ -276,23 +285,26 @@ export class ConversationService {
   }
 
   /**
-   * Mettre à jour une conversation
+   * Mettre à jour une conversation (sécurisé multi-tenant)
    */
-  async updateConversation(id: string, input: UpdateConversationInput): Promise<Conversation> {
-    logger.info('Updating conversation', { conversationId: id });
+  async updateConversation(id: string, tenantId: string, input: UpdateConversationInput): Promise<Conversation> {
+    logger.info('Updating conversation', { conversationId: id, tenantId });
 
     return await withTransaction(async (tx) => {
-      // Vérifier l'existence de la conversation
+      // Vérifier l'existence de la conversation ET l'appartenance au tenant
       const existingResults = await tx
         .select()
         .from(schema.conversations)
-        .where(eq(schema.conversations.id, id))
+        .where(and(
+          eq(schema.conversations.id, id),
+          eq(schema.conversations.tenantId, tenantId)
+        ))
         .limit(1);
 
       const existing = existingResults[0];
       if (!existing) {
-        throw new SylionError(ErrorCodes.CONVERSATION_NOT_FOUND, 'Conversation non trouvée', {
-          details: { conversationId: id }
+        throw new SylionError(ErrorCodes.CONVERSATION_NOT_FOUND, 'Conversation non trouvée ou accès interdit', {
+          details: { conversationId: id, tenantId }
         });
       }
 
@@ -339,28 +351,28 @@ export class ConversationService {
   /**
    * Terminer une conversation
    */
-  async endConversation(id: string): Promise<Conversation> {
-    return await this.updateConversation(id, { status: 'ended' });
+  async endConversation(id: string, tenantId: string): Promise<Conversation> {
+    return await this.updateConversation(id, tenantId, { status: 'ended' });
   }
 
   /**
    * Mettre en pause une conversation
    */
-  async pauseConversation(id: string): Promise<Conversation> {
-    return await this.updateConversation(id, { status: 'paused' });
+  async pauseConversation(id: string, tenantId: string): Promise<Conversation> {
+    return await this.updateConversation(id, tenantId, { status: 'paused' });
   }
 
   /**
    * Reprendre une conversation
    */
-  async resumeConversation(id: string): Promise<Conversation> {
-    return await this.updateConversation(id, { status: 'active' });
+  async resumeConversation(id: string, tenantId: string): Promise<Conversation> {
+    return await this.updateConversation(id, tenantId, { status: 'active' });
   }
 
   /**
-   * Mettre à jour le timestamp du dernier message
+   * Mettre à jour le timestamp du dernier message (sécurisé multi-tenant)
    */
-  async updateLastMessageTime(id: string): Promise<void> {
+  async updateLastMessageTime(id: string, tenantId: string): Promise<void> {
     await withTransaction(async (tx) => {
       await tx
         .update(schema.conversations)
@@ -368,7 +380,10 @@ export class ConversationService {
           lastMessageAt: sql`NOW()`,
           updatedAt: sql`NOW()`,
         })
-        .where(eq(schema.conversations.id, id));
+        .where(and(
+          eq(schema.conversations.id, id),
+          eq(schema.conversations.tenantId, tenantId)
+        ));
 
       // Invalider les caches
       const conversationResults = await tx
@@ -377,7 +392,10 @@ export class ConversationService {
           channelId: schema.conversations.channelId
         })
         .from(schema.conversations)
-        .where(eq(schema.conversations.id, id))
+        .where(and(
+          eq(schema.conversations.id, id),
+          eq(schema.conversations.tenantId, tenantId)
+        ))
         .limit(1);
 
       const conversation = conversationResults[0];

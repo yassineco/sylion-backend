@@ -7,17 +7,16 @@
  * Aucune logique HTTP, uniquement business logic.
  */
 
-import { and, eq, desc, asc, sql, count, gt, lt } from 'drizzle-orm';
-import { db, withTransaction } from '@/db/index';
-import { schema } from '@/db/index';
-import { logger } from '@/lib/logger';
-import { SylionError, ErrorCodes } from '@/lib/http';
-import { cacheKeys, setCache, getCache, deleteCache, cacheTTL } from '@/lib/redis';
-import type {
-  CreateMessageInput,
-  UpdateMessageInput,
-} from './message.types';
+import { db, schema, withTransaction } from '@/db/index';
 import type { Message } from '@/db/schema';
+import { ErrorCodes, SylionError } from '@/lib/http';
+import { logger } from '@/lib/logger';
+import { cacheKeys, cacheTTL, deleteCache, getCache, setCache } from '@/lib/redis';
+import { and, asc, count, desc, eq, gt, lt, sql } from 'drizzle-orm';
+import type {
+    CreateMessageInput,
+    UpdateMessageInput,
+} from './message.types';
 
 /**
  * Service pour la gestion des messages
@@ -93,24 +92,40 @@ export class MessageService {
   }
 
   /**
-   * Obtenir un message par ID
+   * Obtenir un message par ID (sécurisé multi-tenant)
    */
-  async getMessageById(id: string): Promise<Message | null> {
+  async getMessageById(id: string, tenantId: string): Promise<Message | null> {
     const cacheKey = cacheKeys.message(id);
     
     // Essayer le cache d'abord
     const cached = await getCache<Message>(cacheKey);
     if (cached) {
-      return cached;
+      // Vérifier que le message appartient au bon tenant via sa conversation
+      const conversationResults = await db
+        .select({ tenantId: schema.conversations.tenantId })
+        .from(schema.conversations)
+        .where(eq(schema.conversations.id, cached.conversationId))
+        .limit(1);
+      
+      if (conversationResults[0]?.tenantId === tenantId) {
+        return cached;
+      }
     }
 
+    // Jointure pour vérifier l'appartenance au tenant
     const results = await db
-      .select()
+      .select({
+        message: schema.messages,
+      })
       .from(schema.messages)
-      .where(eq(schema.messages.id, id))
+      .innerJoin(schema.conversations, eq(schema.messages.conversationId, schema.conversations.id))
+      .where(and(
+        eq(schema.messages.id, id),
+        eq(schema.conversations.tenantId, tenantId)
+      ))
       .limit(1);
 
-    const message = results[0] || null;
+    const message = results[0]?.message || null;
 
     // Mettre en cache si trouvé
     if (message) {

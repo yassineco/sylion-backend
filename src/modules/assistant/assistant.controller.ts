@@ -4,8 +4,8 @@
  * ================================
  */
 
-import { FastifyRequest, FastifyReply } from 'fastify';
-import { sendSuccess, sendError, sendSylionError } from '@/lib/http';
+import { ErrorCodes, sendSuccess, sendSylionError, SylionError } from '@/lib/http';
+import { FastifyReply, FastifyRequest } from 'fastify';
 import { AssistantService } from './assistant.service';
 import { CreateAssistantSchema, UpdateAssistantSchema } from './assistant.types';
 
@@ -28,8 +28,13 @@ export class AssistantController {
   async getAssistant(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
     try {
       const { assistantId } = request.params as { assistantId: string };
+      const { tenantId } = request.query as { tenantId: string };
       
-      const assistant = await this.assistantService.getAssistantById(assistantId);
+      if (!tenantId) {
+        throw new SylionError(ErrorCodes.BAD_REQUEST, 'TenantId requis dans query parameter');
+      }
+      
+      const assistant = await this.assistantService.getAssistantById(assistantId, tenantId);
       
       return sendSuccess(reply, assistant);
     } catch (error) {

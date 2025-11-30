@@ -66,10 +66,14 @@
 - **🔄 En attente** : Déploiement VPS et configuration Supabase  
 
 ### **Sécurité & bonnes pratiques**
+- **🔒 Multi-tenant** : Isolation des données par tenant, aucune fuite cross-tenant
+- **🛡️ Validation** : Vérification tenantId obligatoire pour toutes les opérations CRUD  
+- **🔐 Authentification** : Middleware de validation des accès (à implémenter)
+- **📝 Logs sécurisés** : Pas de données sensibles dans les traces
+- **⚡ Rate limiting** : Protection contre les abus (à implémenter)
 - **✅ Validation Zod** : Schémas de validation sur toutes les routes
 - **✅ Gestion d'erreurs** : Système centralisé avec codes d'erreur standardisés
-- **✅ Types TypeScript** : Sécurité au niveau du code avec types stricts
-- **🔄 À ajouter** : Authentification JWT et autorisation RBAC  
+- **✅ Types TypeScript** : Sécurité au niveau du code avec types stricts  
 
 ---
 

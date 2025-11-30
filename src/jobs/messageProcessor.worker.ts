@@ -7,21 +7,19 @@
  * Pipeline : Résolution tenant/channel -> Conversation -> Message -> IA -> Réponse
  */
 
-import { Job } from 'bullmq';
+import { db, schema } from '@/db/index';
+import { generateAssistantReply } from '@/lib/llm';
 import { logger } from '@/lib/logger';
-import { db } from '@/db/index';
-import { schema } from '@/db/index';
-import { eq, and } from 'drizzle-orm';
-import { channelService } from '@/modules/channel/channel.service';
+import { assistantService } from '@/modules/assistant/assistant.service';
 import { conversationService } from '@/modules/conversation/conversation.service';
 import { messageService } from '@/modules/message/message.service';
-import { assistantService } from '@/modules/assistant/assistant.service';
 import { tenantService } from '@/modules/tenant/tenant.service';
 import { sendWhatsAppTextMessage } from '@/modules/whatsapp/whatsapp.provider';
-import { generateAssistantReply } from '@/lib/llm';
 import type { NormalizedIncomingMessage } from '@/modules/whatsapp/whatsapp.types';
-import type { JobTypes } from './index';
 import { maskPhoneNumber } from '@/modules/whatsapp/whatsapp.types';
+import { Job } from 'bullmq';
+import { and, eq } from 'drizzle-orm';
+import type { JobTypes } from './index';
 
 /**
  * ================================
@@ -255,7 +253,7 @@ async function resolveAssistant(
   try {
     // Priorité 1 : Assistant de la conversation
     if (conversationAssistantId) {
-      const assistant = await assistantService.getAssistantById(conversationAssistantId);
+      const assistant = await assistantService.getAssistantById(conversationAssistantId, tenantId);
       if (assistant && assistant.isActive) {
         return assistant;
       }
@@ -263,7 +261,7 @@ async function resolveAssistant(
 
     // Priorité 2 : Assistant par défaut du channel
     if (channelAssistantId) {
-      const assistant = await assistantService.getAssistantById(channelAssistantId);
+      const assistant = await assistantService.getAssistantById(channelAssistantId, tenantId);
       if (assistant && assistant.isActive) {
         return assistant;
       }
@@ -473,7 +471,7 @@ async function sendReplyToWhatsApp(
 async function updateStats(context: MessageProcessorContext): Promise<void> {
   try {
     // Mettre à jour le lastActiveAt de la conversation
-    await conversationService.updateLastMessageTime(context.conversationId);
+    await conversationService.updateLastMessageTime(context.conversationId, context.tenantId);
 
     // TODO: Incrémenter les compteurs de quotas tenant (messages, AI requests)
     // Sera implémenté dans une prochaine phase

@@ -7,17 +7,16 @@
  * Aucune logique HTTP, uniquement business logic.
  */
 
-import { and, eq, desc, sql } from 'drizzle-orm';
-import { db, withTransaction } from '@/db/index';
-import { schema } from '@/db/index';
-import { logger } from '@/lib/logger';
-import { SylionError, ErrorCodes } from '@/lib/http';
-import { cacheKeys, setCache, getCache, deleteCache, cacheTTL } from '@/lib/redis';
-import type {
-  CreateAssistantInput,
-  UpdateAssistantInput,
-} from './assistant.types';
+import { db, schema, withTransaction } from '@/db/index';
 import type { Assistant } from '@/db/schema';
+import { ErrorCodes, SylionError } from '@/lib/http';
+import { logger } from '@/lib/logger';
+import { cacheKeys, cacheTTL, deleteCache, getCache, setCache } from '@/lib/redis';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import type {
+    CreateAssistantInput,
+    UpdateAssistantInput,
+} from './assistant.types';
 
 /**
  * Service pour la gestion des assistants
@@ -99,21 +98,24 @@ export class AssistantService {
   }
 
   /**
-   * Obtenir un assistant par ID
+   * Obtenir un assistant par ID (sécurisé multi-tenant)
    */
-  async getAssistantById(id: string): Promise<Assistant | null> {
+  async getAssistantById(id: string, tenantId: string): Promise<Assistant | null> {
     const cacheKey = cacheKeys.assistant(id);
     
     // Essayer le cache d'abord
     const cached = await getCache<Assistant>(cacheKey);
-    if (cached) {
+    if (cached && cached.tenantId === tenantId) {
       return cached;
     }
 
     const results = await db
       .select()
       .from(schema.assistants)
-      .where(eq(schema.assistants.id, id))
+      .where(and(
+        eq(schema.assistants.id, id),
+        eq(schema.assistants.tenantId, tenantId)
+      ))
       .limit(1);
 
     const assistant = results[0] || null;

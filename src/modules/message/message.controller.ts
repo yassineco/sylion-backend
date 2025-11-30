@@ -4,8 +4,8 @@
  * ================================
  */
 
-import { FastifyRequest, FastifyReply } from 'fastify';
-import { sendSuccess, sendError, sendSylionError } from '@/lib/http';
+import { ErrorCodes, sendSuccess, sendSylionError, SylionError } from '@/lib/http';
+import { FastifyReply, FastifyRequest } from 'fastify';
 import { MessageService } from './message.service';
 import { CreateMessageSchema, UpdateMessageSchema } from './message.types';
 
@@ -28,8 +28,13 @@ export class MessageController {
   async getMessage(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
     try {
       const { messageId } = request.params as { messageId: string };
+      const { tenantId } = request.query as { tenantId: string };
       
-      const message = await this.messageService.getMessageById(messageId);
+      if (!tenantId) {
+        throw new SylionError(ErrorCodes.BAD_REQUEST, 'TenantId requis dans query parameter');
+      }
+      
+      const message = await this.messageService.getMessageById(messageId, tenantId);
       
       return sendSuccess(reply, message);
     } catch (error) {

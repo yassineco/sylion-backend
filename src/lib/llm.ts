@@ -60,7 +60,7 @@ export async function generateAssistantReply(
     });
 
     // Récupérer la configuration de l'assistant
-    const assistant = await assistantService.getAssistantById(options.assistantId);
+    const assistant = await assistantService.getAssistantById(options.assistantId, options.tenantId);
     if (!assistant) {
       throw new Error(`Assistant not found: ${options.assistantId}`);
     }
@@ -104,7 +104,7 @@ export async function generateAssistantReply(
 
 async function generateStubReply(
   userMessage: string,
-  assistant: any,
+  assistant: { name: string; systemPrompt?: string; temperature?: string | number },
   options: GenerateReplyOptions
 ): Promise<string> {
   
@@ -213,9 +213,9 @@ async function generateStubReply(
 /**
  * Valider la configuration de l'assistant pour l'IA
  */
-export async function validateAssistantForLLM(assistantId: string): Promise<boolean> {
+export async function validateAssistantForLLM(assistantId: string, tenantId: string): Promise<boolean> {
   try {
-    const assistant = await assistantService.getAssistantById(assistantId);
+    const assistant = await assistantService.getAssistantById(assistantId, tenantId);
     
     if (!assistant || !assistant.isActive) {
       return false;

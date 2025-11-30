@@ -6,8 +6,8 @@
  * Controller pour la gestion des channels.
  */
 
-import { FastifyRequest, FastifyReply } from 'fastify';
-import { sendSuccess, sendError, sendSylionError, ErrorCodes } from '@/lib/http';
+import { ErrorCodes, sendSuccess, sendSylionError, SylionError } from '@/lib/http';
+import { FastifyReply, FastifyRequest } from 'fastify';
 import { ChannelService } from './channel.service';
 import { CreateChannelSchema, UpdateChannelSchema } from './channel.types';
 
@@ -33,8 +33,13 @@ export class ChannelController {
   async getChannel(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
     try {
       const { channelId } = request.params as { channelId: string };
+      const { tenantId } = request.query as { tenantId: string };
       
-      const channel = await this.channelService.getChannelById(channelId);
+      if (!tenantId) {
+        throw new SylionError(ErrorCodes.BAD_REQUEST, 'TenantId requis dans query parameter');
+      }
+      
+      const channel = await this.channelService.getChannelById(channelId, tenantId);
       
       return sendSuccess(reply, channel);
     } catch (error) {
@@ -57,9 +62,14 @@ export class ChannelController {
   async updateChannel(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
     try {
       const { channelId } = request.params as { channelId: string };
+      const { tenantId } = request.query as { tenantId: string };
       const data = UpdateChannelSchema.parse(request.body);
       
-      const channel = await this.channelService.updateChannel(channelId, data);
+      if (!tenantId) {
+        throw new SylionError(ErrorCodes.BAD_REQUEST, 'TenantId requis dans query parameter');
+      }
+      
+      const channel = await this.channelService.updateChannel(channelId, tenantId, data);
       
       return sendSuccess(reply, channel);
     } catch (error) {

@@ -4,8 +4,8 @@
  * ================================
  */
 
-import { FastifyRequest, FastifyReply } from 'fastify';
-import { sendSuccess, sendError, sendSylionError } from '@/lib/http';
+import { ErrorCodes, sendSuccess, sendSylionError, SylionError } from '@/lib/http';
+import { FastifyReply, FastifyRequest } from 'fastify';
 import { ConversationService } from './conversation.service';
 import { CreateConversationSchema, UpdateConversationSchema } from './conversation.types';
 
@@ -30,8 +30,13 @@ export class ConversationController {
   async getConversation(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
     try {
       const { conversationId } = request.params as { conversationId: string };
+      const { tenantId } = request.query as { tenantId: string };
       
-      const conversation = await this.conversationService.getConversationById(conversationId);
+      if (!tenantId) {
+        throw new SylionError(ErrorCodes.BAD_REQUEST, 'TenantId requis dans query parameter');
+      }
+      
+      const conversation = await this.conversationService.getConversationById(conversationId, tenantId);
       
       return sendSuccess(reply, conversation);
     } catch (error) {
@@ -54,9 +59,14 @@ export class ConversationController {
   async updateConversation(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
     try {
       const { conversationId } = request.params as { conversationId: string };
+      const { tenantId } = request.query as { tenantId: string };
       const data = UpdateConversationSchema.parse(request.body);
       
-      const conversation = await this.conversationService.updateConversation(conversationId, data);
+      if (!tenantId) {
+        throw new SylionError(ErrorCodes.BAD_REQUEST, 'TenantId requis dans query parameter');
+      }
+      
+      const conversation = await this.conversationService.updateConversation(conversationId, tenantId, data);
       
       return sendSuccess(reply, conversation);
     } catch (error) {

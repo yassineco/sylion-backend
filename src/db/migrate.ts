@@ -6,9 +6,9 @@
  * Script pour exécuter les migrations Drizzle.
  */
 
+import { logger } from '@/lib/logger';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { db, client } from './index';
-import { logger } from '../lib/logger';
+import { client, db } from './index';
 
 async function runMigrations() {
   try {

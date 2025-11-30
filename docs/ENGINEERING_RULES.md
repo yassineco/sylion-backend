@@ -78,16 +78,51 @@ Pas d’autre ORM, pas de Sequelize, pas de Mongoose, pas d’introduction de li
 - Typage via Zod pour entrée utilisateur
 - Pas de logique dans les controllers
 - Chaque service doit être testable
+- **OBLIGATOIRE : Multi-tenant security**
+  - Toute méthode `getXXXById`, `updateXXX`, `deleteXXX` doit inclure `tenantId`
+  - Aucune requête DB sans filtrage par tenant
+  - Validation ownership avant modification/suppression
+
+# 5. Sécurité Multi-Tenant (CRITIQUE)
+
+**Règles absolument obligatoires :**
+
+1. **Isolation des données**
+   - Toute méthode d'accès aux ressources DOIT filtrer par `tenantId`
+   - Pattern : `getXXXById(id: string, tenantId: string)`
+   - Pattern : `updateXXX(id: string, tenantId: string, input: UpdateInput)`
+
+2. **Validation ownership**
+   ```typescript
+   // ✅ CORRECT
+   const channel = await db.select()
+     .from(channels)
+     .where(and(eq(channels.id, id), eq(channels.tenantId, tenantId)));
+   
+   // ❌ INTERDIT 
+   const channel = await db.select()
+     .from(channels)
+     .where(eq(channels.id, id)); // Pas de filtre tenant !
+   ```
+
+3. **Controllers sécurisés**
+   - Extraction `tenantId` obligatoire depuis `request.query` ou context
+   - Validation présence tenantId (erreur si manquant)
+   - Aucune opération sans vérification tenant
+
+4. **Cache sécurisé**
+   - Validation tenant même pour données en cache
+   - Invalidation cache cohérente avec tenant
 
 ---
 
-# 5. Fichiers `.env` & Secrets
+# 6. Fichiers `.env` & Secrets
 
 Voir `SECURITY_GUIDE.md` pour les règles strictes.
 
 ---
 
-# 6. Logs & Observabilité
+# 7. Logs & Observabilité
 
 - Logger : **Pino JSON**
 - Pas de données sensibles dans les logs (numéros de téléphone → masked)
@@ -96,7 +131,7 @@ Voir `SECURITY_GUIDE.md` pour les règles strictes.
 
 ---
 
-# 7. Jobs & Workers
+# 8. Jobs & Workers
 
 - Toute logique IA/RAG/WhatsApp passe via **BullMQ**
 - Chaque worker dans `jobs/`
@@ -104,7 +139,7 @@ Voir `SECURITY_GUIDE.md` pour les règles strictes.
 
 ---
 
-# 8. RAG
+# 9. RAG
 
 - RAG local v1 = pgvector
 - Embeddings = Vertex
@@ -113,7 +148,7 @@ Voir `SECURITY_GUIDE.md` pour les règles strictes.
 
 ---
 
-# 9. Qualité & Roadmap Engineering
+# 10. Qualité & Roadmap Engineering
 
 - PR obligatoires (même en solo)
 - Commits clairs
@@ -121,7 +156,7 @@ Voir `SECURITY_GUIDE.md` pour les règles strictes.
 
 ---
 
-# 10. Vision long terme
+# 11. Vision long terme
 
 Cette architecture doit pouvoir évoluer vers :
 

@@ -159,7 +159,7 @@ Start generating the complete project now.
 
 
 
-PROMPT PHASE 2 – WhatsApp Gateway + Message Processor
+PROMPT PHASE 2 – WhatsApp Gateway + Message Processor-----------------------------------
 
 
 Tu es l’Ingénieur Lead Senior du projet **sylion-backend**.
@@ -335,3 +335,250 @@ Assurer :
    - compile avec `npm run build` ou `npm run type-check`
    - démarre avec `np
 
+Audit Complet Sylion Backend  ---------------------
+
+
+Tu agis comme un Ingénieur Lead Senior responsable de la qualité du backend SylionAI.
+
+Je veux que tu exécutes un **audit technique complet** du backend, en suivant STRICTEMENT la méthodologie décrite dans `docs/AUDIT_CHECKLIST.md`.
+
+Ton rôle :
+- être exigeant,
+- être méthodique,
+- détecter les faiblesses que Copilot aurait pu introduire,
+- proposer des correctifs précis et localisés,
+- garantir la cohérence globale architecture + multi-tenant + sécurité.
+
+Tu NE DOIS PAS :
+- réécrire des fichiers entiers,
+- proposer des simplifications abusives,
+- ignorer une incohérence,
+- contourner un problème au lieu de le résoudre proprement.
+
+------------------------------------------------------------
+🎯 **Objectif de l’audit**
+------------------------------------------------------------
+
+Passe en revue *tout le backend*, en analysant les points suivants :
+
+1. Discipline de base  
+   - build, lint, alias, import, secrets
+
+2. Schéma DB & Drizzle  
+   - cohérence types ⇆ schema ⇆ services  
+   - relations + tenantId partout où nécessaire  
+   - migrations correctes
+
+3. Multi-tenant & isolation des données  
+   - aucun accès DB sans tenantId  
+   - aucune fuite potentielle entre tenants
+
+4. WhatsApp Gateway  
+   - webhook minimal et sécurisé  
+   - normalisation cohérente  
+   - gestion correcte du verify token  
+   - logs propres (pas de leak de data perso)
+
+5. BullMQ & Workers  
+   - queues uniques  
+   - workers enregistrés une seule fois  
+   - retry/backoff cohérent  
+   - idempotence conversation/message  
+   - pas de duplication DB
+
+6. LLM / IA  
+   - messages filtrés et limités  
+   - erreurs gérées  
+   - aucune donnée inutile envoyée  
+   - stub compatible Vertex AI
+
+7. Sécurité  
+   - variables d’env typées  
+   - aucun secret logué  
+   - aucune stack trace exposée  
+   - aucune route admin non protégée
+
+8. Routes & API  
+   - validation des entrées  
+   - logique métier dans services (pas dans routes)
+
+9. Qualité du code  
+   - pas de any inutile  
+   - fonctions ≤ 80 lignes  
+   - commentaires utiles  
+   - structure claire
+
+10. Préparation déploiement  
+   - fichiers prêts pour VPS  
+   - aucune dépendance locale cachée  
+   - services démarrent même sans WhatsApp Provider réel
+
+------------------------------------------------------------
+📦 **Livrable attendu**
+------------------------------------------------------------
+
+Je veux une sortie en 3 parties :
+
+### 🔍 PARTIE 1 — Résumé Audit
+- Score global (0–100 %)
+- Forces actuelles
+- Risques critiques (classés : High / Medium / Low)
+
+### 🛠 PARTIE 2 — Corrections nécessaires
+Pour chaque problème identifié :
+- fichier concerné
+- ligne(s) concernée(s)
+- explication courte
+- correctif exact (patch précis)
+
+⚠️ Tu dois proposer des correctifs **localisés**, pas réécrire de gros fichiers.
+
+Exemple attendu :
+> **Fichier**: src/lib/http.ts  
+> **Problème**: Type any restant dans normalizeError  
+> **Correction**: remplacer `error: any` par `error: unknown` + ajout helper toHttpError  
+> **Patch**:  
+> ```ts
+> function normalizeError(err: unknown) {
+>   const e = toHttpError(err);
+>   ...
+> }
+> ```
+
+### 🚀 PARTIE 3 — Vérification finale
+- vérifier que les correctifs ne cassent pas `npm run build`
+- vérifier cohérence multi-tenant
+- vérifier que la Phase 2 WhatsApp reste fonctionnelle
+- suggestions optionnelles pour renforcer solidité (sans implémenter)
+
+------------------------------------------------------------
+📌 Important
+------------------------------------------------------------
+
+- Tu dois te référer à :  
+  - docs/ENGINEERING_RULES.md  
+  - docs/SECURITY_GUIDE.md  
+  - docs/AUDIT_CHECKLIST.md  
+  - docs/ROADMAP_PHASES.md  
+- Tu dois respecter l’architecture actuelle (monolithe TS + Fastify + Drizzle + BullMQ).
+- Tu dois conserver les alias TypeScript `@/*`.
+- Tu dois fournir un audit **réaliste**, pas flatteur.
+
+Commence maintenant l’audit complet du backend SylionAI.
+
+
+
+
+Auto-Fix Multi-Tenant --------------------
+
+🎯 Objectif : corriger TOUTES les failles multi-tenant du backend SylionAI.
+
+Tu agis comme Ingénieur Lead Sécurité.  
+Tu dois corriger **toutes les méthodes getXXX / updateXXX / deleteXXX** qui ne vérifient pas le `tenantId`.
+
+Tu DOIS respecter strictement :
+- docs/AUDIT_CHECKLIST.md
+- docs/ENGINEERING_RULES.md
+- docs/ROADMAP_PHASES.md
+
+Tu NE DOIS PAS :
+- réécrire entièrement les services,
+- changer la structure du projet,
+- supprimer de la logique métier,
+- ajouter de la “magie” (tenant par défaut, etc.).
+
+------------------------------------------------------------
+🔍 1. Cible des corrections
+------------------------------------------------------------
+
+Focalise-toi sur les services suivants :
+
+- src/modules/channel/channel.service.ts
+- src/modules/conversation/conversation.service.ts
+- src/modules/assistant/assistant.service.ts
+- src/modules/message/message.service.ts
+- (éventuellement) autres services qui exposent des méthodes getById / update / delete
+
+Méthodes critiques typiques (à vérifier dans le code réel) :
+- getChannelById(id: string)
+- getMessageById(id: string)
+- getConversationById(id: string)
+- getAssistantById(id: string)
+- updateConversation(id: string, input: ...)
+- updateChannel(id: string, input: ...)
+- deleteXXX(id: string)
+
+------------------------------------------------------------
+🛡 2. Règles de sécurité multi-tenant
+------------------------------------------------------------
+
+Pour CHAQUE méthode qui lit ou modifie une ressource par son id :
+
+1. La signature doit inclure le tenantId :
+   - AVANT : getChannelById(id: string)
+   - APRÈS : getChannelById(id: string, tenantId: string)
+
+2. La requête Drizzle DOIT filtrer par tenantId :
+
+   - AVANT :
+     db.select().from(channels).where(eq(channels.id, id))
+
+   - APRÈS :
+     db.select()
+       .from(channels)
+       .where(and(eq(channels.id, id), eq(channels.tenantId, tenantId)))
+       .limit(1)
+
+3. Pour update/delete, même règle :
+
+   - AVANT :
+     db.update(channels).set(input).where(eq(channels.id, id))
+
+   - APRÈS :
+     db.update(channels)
+       .set(input)
+       .where(and(eq(channels.id, id), eq(channels.tenantId, tenantId)));
+
+4. Tu NE DOIS PAS :
+   - inventer un tenantId “par défaut”,
+   - faire une requête sans filtre tenantId,
+   - ignorer le tenantId passé depuis le controller.
+
+------------------------------------------------------------
+🔁 3. Ajustement côté controllers
+------------------------------------------------------------
+
+Après avoir modifié les services, tu DOIS mettre à jour les controllers correspondants pour leur passer le tenantId provenant du contexte (request, auth, etc.).
+
+Exemples (à adapter au code réel) :
+
+- AVANT :
+  const channel = await channelService.getChannelById(params.id);
+
+- APRÈS :
+  const channel = await channelService.getChannelById(params.id, request.tenantId);
+
+Idem pour :
+- updateChannel
+- getConversationById
+- updateConversation
+- getAssistantById
+- getMessageById
+- deleteXXX
+
+Si le tenantId est stocké différemment (ex: request.auth.tenant.id), tu dois l’utiliser.
+
+------------------------------------------------------------
+🧱 4. Option : Helper d’ownership (facultatif mais recommandé)
+
+Si c’est pertinent, tu peux ajouter un helper dans `src/lib/security.ts` :
+
+```ts
+export function assertTenantOwnership<T extends { tenantId: string }>(
+  entity: T | undefined,
+  tenantId: string
+) {
+  if (!entity || entity.tenantId !== tenantId) {
+    throw new Error('Accès interdit : ressource hors tenant.');
+  }
+}
