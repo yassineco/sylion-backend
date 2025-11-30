@@ -12,7 +12,7 @@ import type { Message } from '@/db/schema';
 import { ErrorCodes, SylionError } from '@/lib/http';
 import { logger } from '@/lib/logger';
 import { cacheKeys, cacheTTL, deleteCache, getCache, setCache } from '@/lib/redis';
-import { and, asc, count, desc, eq, gt, lt, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, lt, sql } from 'drizzle-orm';
 import type {
     CreateMessageInput,
     UpdateMessageInput,
@@ -195,7 +195,7 @@ export class MessageService {
     const messages = await db
       .select()
       .from(schema.messages)
-      .where(sql`${schema.messages.conversationId} = ANY(${conversationIds})`)
+      .where(inArray(schema.messages.conversationId, conversationIds))
       .orderBy(desc(schema.messages.createdAt))
       .limit(limit)
       .offset(offset);

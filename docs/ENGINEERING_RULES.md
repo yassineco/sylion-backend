@@ -164,4 +164,57 @@ Cette architecture doit pouvoir évoluer vers :
 - multi-tenant complet
 - séparation future en micro-services (si besoin)
 
-Toute décision d’aujourd’hui doit garder cette trajectoire en tête.
+Toute décision d'aujourd'hui doit garder cette trajectoire en tête.
+
+---
+
+### 🔒 Environment File Safety Rule
+
+Never copy `.env.test` into `.env`.  
+Test environments must ALWAYS load their variables explicitly using dotenv with `-e .env.test`.  
+Production `.env` must NEVER be overwritten or polluted with test credentials.
+
+### 🔒 Environment Test Migration Rule
+
+- `dotenv-cli` MUST be used for all test-only migrations.  
+- Test migrations must ALWAYS use `.env.test`.  
+- Production migrations MUST NEVER rely on test env files.  
+- No script should auto-load `.env.test` unless explicitly invoked by a test command.
+
+### 🧱 Infra Bug Fixes Triggered by Tests
+
+- When a unit or integration test reveals a REAL bug in shared infrastructure code
+  (database client, env loader, logger, custom type mapping, etc.),
+  it is ALLOWED to patch the production file that contains the bug.
+- Such changes MUST:
+  - Be minimal and backward-compatible
+  - Be documented in a short comment near the fix
+  - Be added to ENGINEERING_RULES.md in this section
+- Tests MUST NOT introduce "test-only hacks" into production code.
+  The fix must make sense for both tests and production.
+
+### 🧠 Test Mocks for External Services
+
+- Any external service (Redis, HTTP clients, queues, etc.) used in production **MUST** have a consistent Jest mock.
+- When a new cache key or helper (ex: `cacheKeys.assistantsByTenant`) is added in production:
+  - The corresponding Jest mock **MUST** be updated in `test/setup.ts`.
+  - The mock must mirror the same shape (functions vs strings, parameters, return types).
+- Infra bugs found by tests can be fixed by:
+  - Patching the infra layer in a backward-compatible way.
+  - Updating the central Jest mock instead of patching each test file.
+- This rule prevents "TypeError: xxx is not a function" style failures from hiding real business regressions.
+
+### 🧩 Array vs Scalar Safety (PostgreSQL)
+
+- Any use of `ANY(...)`, `IN (...)` or array types in PostgreSQL MUST clearly distinguish between:
+  - scalar IDs (single UUID),
+  - and arrays of IDs.
+- If a service accepts a single ID, queries should use scalar equality (`eq(...)`) instead of array operators.
+- If array operators are required:
+  - the service MUST normalize the input to an array (`[id]`) before calling the query,
+  - tests MUST cover both single-ID and multi-ID scenarios.
+- Prefer Drizzle's `inArray(...)` over raw SQL `ANY(...)` to avoid custom type serialization issues.
+- Infra fixes for "malformed array literal" errors MUST:
+  - be minimal,
+  - be documented in this file,
+  - and NEVER hide real access control bugs.

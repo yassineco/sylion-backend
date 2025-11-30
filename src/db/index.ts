@@ -32,12 +32,31 @@ const connectionConfig = {
   
   // Configuration des types PostgreSQL
   types: {
-    // Support pour pgvector
+    // Support pour pgvector - Fixed to handle both arrays and strings safely
     vector: {
       to: 1043,
       from: [1043],
-      serialize: (x: number[]) => '[' + x.join(',') + ']',
-      parse: (x: string) => x.slice(1, -1).split(',').map(Number),
+      serialize: (x: unknown) => {
+        if (Array.isArray(x)) {
+          return `[${x.join(',')}]`;
+        }
+        if (typeof x === 'string') {
+          return x;
+        }
+        if (x == null) {
+          return null;
+        }
+        return String(x);
+      },
+      parse: (x: string) => {
+        if (!x.startsWith('[') || !x.endsWith(']')) {
+          return x;
+        }
+        return x
+          .slice(1, -1)
+          .split(',')
+          .map((n) => Number(n));
+      },
     },
   },
   
