@@ -166,17 +166,29 @@ export const validateWhatsAppNumber = (phoneNumber: string): boolean => {
   return regex.test(phoneNumber);
 };
 
-// Nettoyer et formater un numéro de téléphone
+/**
+ * Normalize phone number to standard format
+ * 
+ * Rules:
+ * - Trims input and extracts digits only (removes all formatting: spaces, dashes, parentheses, letters)
+ * - Removes all existing '+' signs to prevent double prefix bug
+ * - Returns exactly one leading '+' followed by digits only
+ * - Returns empty string if no digits found
+ * 
+ * @param phoneNumber - Raw phone number string (any format)
+ * @returns Normalized phone number with single '+' prefix, or empty string if no digits
+ */
 export const normalizePhoneNumber = (phoneNumber: string): string => {
-  // Supprimer tous les caractères non numériques sauf le +
-  const cleaned = phoneNumber.replace(/[^\d+]/g, '');
+  // Trim input and extract digits only - remove ALL non-digit characters (including all + signs)
+  const digitsOnly = phoneNumber.trim().replace(/\D/g, '');
   
-  // Ajouter + si manquant et que ça commence par un chiffre
-  if (!cleaned.startsWith('+') && cleaned.length > 0) {
-    return '+' + cleaned;
+  // If no digits found, return empty string
+  if (digitsOnly.length === 0) {
+    return '';
   }
   
-  return cleaned;
+  // Return exactly one leading '+' followed by all digits
+  return '+' + digitsOnly;
 };
 
 // Masquer un numéro de téléphone pour les logs (sécurité)

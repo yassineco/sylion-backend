@@ -7,18 +7,18 @@
  * Normalisation et push vers la queue BullMQ.
  */
 
-import { logger } from '@/lib/logger';
 import { addIncomingMessageJob } from '@/jobs/index';
+import { logger } from '@/lib/logger';
 import {
-  WhatsAppRawPayload,
-  WhatsAppRawPayloadSchema,
-  WhatsAppRawMessage,
-  NormalizedIncomingMessage,
-  NormalizedContact,
-  WhatsAppError,
-  WhatsAppErrorCodes,
-  normalizePhoneNumber,
-  maskPhoneNumber,
+    NormalizedContact,
+    NormalizedIncomingMessage,
+    WhatsAppError,
+    WhatsAppErrorCodes,
+    WhatsAppRawMessage,
+    WhatsAppRawPayload,
+    WhatsAppRawPayloadSchema,
+    maskPhoneNumber,
+    normalizePhoneNumber,
 } from './whatsapp.types';
 
 /**
@@ -90,7 +90,7 @@ export class WhatsAppGateway {
 
         // Métadonnées du canal
         const channelPhoneNumber = normalizePhoneNumber(
-          '+' + value.metadata.display_phone_number
+          value.metadata.display_phone_number
         );
 
         // Traitement des contacts (pour récupérer les noms)
@@ -147,7 +147,7 @@ export class WhatsAppGateway {
     }
 
     // Construction du contact normalisé
-    const fromPhoneNumber = normalizePhoneNumber('+' + message.from);
+    const fromPhoneNumber = normalizePhoneNumber(message.from);
     const contactName = contactsMap.get(message.from);
 
     const normalizedContact: NormalizedContact = {
