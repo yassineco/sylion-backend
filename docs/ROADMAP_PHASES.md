@@ -35,7 +35,8 @@ Statuts possibles :
 | /health opérationnel | 🟢 Done |
 | Standards d’ingénierie (docs) | 🟢 Done |
 
-**Phase 1 : 🟢 Done**
+**Phase 1 : 🟢 Done**  
+**Testing:** Bootstrap test runner configuré, test sample de validation setup
 
 ---
 
@@ -65,7 +66,34 @@ Statuts possibles :
 | Table `channel_bindings` (WhatsApp → assistant) | 🔴 Not Started |
 | Module usage | 🔴 Not Started |
 
-**Phase 2 : 🟢 Done** *(WhatsApp Gateway + Message Processor implémentés)*
+**Phase 2 : 🟢 Done** *(WhatsApp Gateway + Message Processor implémentés)*  
+**Testing:** Tests de base Gateway + mapping + error handling intégrés
+
+---
+
+# 🔵 Phase 2.5 — Tests critiques (unitaires + intégration)  
+**Objectif :** Verrouiller les invariants critiques de la plateforme avant RAG/Vertex/production.
+
+| Tâche | Statut |
+|------|--------|
+| **Configuration test runner (Jest/Vitest)** | 🔴 Not Started |
+| **Script `npm test` opérationnel** | 🔴 Not Started |
+| **Tests unitaires WhatsApp Gateway** | 🔴 Not Started |
+| - Webhook parsing + normalization | 🔴 Not Started |
+| - Phone number → Channel → Tenant mapping | 🔴 Not Started |
+| **Tests unitaires Services Core** | 🔴 Not Started |
+| - ConversationService (find or create conversation) | 🔴 Not Started |
+| - MessageService (historical context retrieval) | 🔴 Not Started |
+| - UsageService (quotas, counters, token usage) | 🔴 Not Started |
+| **Tests intégration MessageProcessor** | 🔴 Not Started |
+| - Pipeline BullMQ: message → conversation → IA stub → WhatsApp send (mocked) | 🔴 Not Started |
+| **Tests multi-tenant "fence tests"** | 🔴 Not Started |
+| - Garantie zéro accès cross-tenant (conversations, messages) | 🔴 Not Started |
+| - RAG chunks isolation stricte par tenant_id | 🔴 Not Started |
+| **Tests non-fonctionnels** | 🔴 Not Started |
+| - Latency budget check (end-to-end sous charge normale) | 🔴 Not Started |
+
+**Phase 2.5 : 🔴 Not Started** *(Prérequis pour Phase 3 RAG)*
 
 ---
 
@@ -84,7 +112,8 @@ Statuts possibles :
 | **Configuration Vertex AI project** | 🔴 Not Started |
 | **Tests intégration IA + RAG** | 🔴 Not Started |
 
-**Phase 3 : 🔴 Not Started**
+**Phase 3 : 🔴 Not Started**  
+**Testing:** Extension couverture RAG indexer & search, regression tests sur flux critiques
 
 ---
 
@@ -103,7 +132,8 @@ Statuts possibles :
 | **Monitoring avancé (Sentry + Grafana)** | 🔴 Not Started |
 | **Tests production /health** | 🔴 Not Started |
 
-**Phase 4 : 🔴 Not Started**
+**Phase 4 : 🔴 Not Started**  
+**Testing:** Tests production /health, monitoring alerts, load testing basique
 
 ---
 
@@ -190,6 +220,7 @@ Statuts possibles :
 |-------|---------|
 | Phase 1 – Squelette Backend | 🟢 Done |
 | Phase 2 – WhatsApp Gateway + Message Processor | 🟢 Done |
+| **Phase 2.5 – Tests critiques (unitaires + intégration)** | 🔴 **Not Started** |
 | **Sécurité Multi-Tenant (Critique)** | 🟢 **Done** |
 | Phase 3 – RAG System + Vertex AI | 🔴 Not Started |
 | Phase 4 – Infrastructure Production + Analytics | 🔴 Not Started |
@@ -207,7 +238,8 @@ Statuts possibles :
 ➡️ Backend capable de recevoir un message WhatsApp, traiter avec IA, et répondre  
 ➡️ Pipeline complet : Webhook → Queue → Worker → IA → Response  
 ➡️ Architecture multi-tenant prête pour commercialisation  
-➡️ **Prêt pour Phase 3 : RAG + Vertex AI**
+🧪 **Prochaine étape critique :** Phase 2.5 Tests avant RAG  
+➡️ **Puis Phase 3 :** RAG + Vertex AI avec base testée solide
 
 🎯 **Prochaine priorité :** Migration service IA stub → Vertex AI réel + système RAG
 
@@ -218,7 +250,8 @@ Statuts possibles :
 - ✅ **Phase 2 TERMINÉE** : WhatsApp Gateway + Message Processor opérationnels  
 - ✅ **Architecture solide** : Pipeline complet avec BullMQ + service IA stub intelligent  
 - ✅ **Sécurité Multi-Tenant CRITIQUE** : 11 failles corrigées, isolation parfaite garantie
-- 🎯 **Phase 3 prioritaire** : Migration vers Vertex AI + système RAG pgvector  
+- 🧪 **Phase 2.5 PRIORITÉ IMMÉDIATE** : Tests critiques avant RAG - aucun déploiement sans tests
+- 🎯 **Phase 3 conditionnée** : Migration vers Vertex AI seulement après validation test suite  
 - 📊 **Analytics prêtes** : Infrastructure monitoring intégrée dans Phase 4  
 - 🚀 **MVP fonctionnel** : Système prêt pour tests réels avec 360dialog  
 - 🔒 **Production-Ready** : Sécurité et isolation multi-tenant validées

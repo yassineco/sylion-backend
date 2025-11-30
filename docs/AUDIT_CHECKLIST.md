@@ -99,7 +99,25 @@ Même si c’est encore un stub :
 
 ---
 
-## 7. Sécurité & secrets
+## 7. Testing & Quality Gate
+
+- [ ] Un test runner est configuré (Jest, Vitest ou équivalent) et peut être lancé avec une seule commande (`npm test` / `pnpm test`).
+- [ ] Des tests unitaires existent pour :
+  - [ ] WhatsApp Gateway (webhook parsing + normalisation)
+  - [ ] Channel/tenant mapping (phone number → Channel → Tenant)
+  - [ ] ConversationService (find or create conversation)
+  - [ ] MessageService (historical context retrieval for LLM)
+  - [ ] UsageService (quotas, counters, token usage)
+- [ ] Des tests d'intégration existent pour le worker BullMQ de traitement de messages (MessageProcessor).
+- [ ] Des tests de "multi-tenant fence" vérifient qu'un tenant ne peut JAMAIS accéder aux données d'un autre tenant (conversations, messages, knowledge_chunks).
+- [ ] Des tests RAG locaux vérifient que toutes les requêtes pgvector sont filtrées sur `tenant_id` et `knowledge_base_id`.
+- [ ] Un test d'intégration complet couvre le flot : message WhatsApp entrant → Gateway → Queue → Worker → IA stub → envoi WhatsApp (mocké) → UsageService.
+- [ ] Tous les tests passent sur la machine de développement avant toute mise en production ou tag de release.
+- [ ] La future CI (GitHub Actions ou autre) devra exécuter les tests automatiquement et bloquer un déploiement si les tests échouent (même si la CI n'est pas encore en place, ce point doit être marqué comme TODO).
+
+---
+
+## 8. Sécurité & secrets
 
 - [ ] Toutes les clés / URLs / tokens viennent de `src/config/env.ts` + `.env`, jamais en dur.
 - [ ] Les nouvelles variables d’env sont :
@@ -111,7 +129,7 @@ Même si c’est encore un stub :
 
 ---
 
-## 8. Routes & API
+## 9. Routes & API
 
 Pour chaque nouvelle route ou modification dans `routes.ts` / `*.routes.ts` :
 
@@ -125,7 +143,7 @@ Pour chaque nouvelle route ou modification dans `routes.ts` / `*.routes.ts` :
 
 ---
 
-## 9. Qualité du code & lisibilité
+## 10. Qualité du code & lisibilité
 
 - [ ] Aucun `any` non justifié.
 - [ ] Les noms de fonctions/méthodes sont explicites (`createTenant`, `resolveChannelFromPhone`, etc.).
@@ -134,10 +152,11 @@ Pour chaque nouvelle route ou modification dans `routes.ts` / `*.routes.ts` :
 
 ---
 
-## 10. Avant commit / push
+## 11. Avant commit / push
 
 - [ ] `npm run build` ✅
 - [ ] `npm run lint` ✅ (ou warnings compris/acceptés)
+- [ ] `npm test` ✅ (si tests disponibles)
 - [ ] `git status` propre (pas de fichiers oubliés, pas de fichiers temporaires)
 - [ ] J’ai mis à jour si nécessaire :
   - [ ] `docs/LEARNING_LOG.md`
@@ -146,17 +165,18 @@ Pour chaque nouvelle route ou modification dans `routes.ts` / `*.routes.ts` :
 
 ---
 
-## 11. Avant déploiement (VPS / Prod)
+## 12. Avant déploiement (VPS / Prod)
 
-- [ ] Les variables d’environnement nécessaires sont configurées sur la cible (VPS, Supabase, GCP).
-- [ ] J’ai testé `/health` sur l’environnement cible.
-- [ ] J’ai testé au moins un scénario complet (ex : message WhatsApp → IA → réponse).
-- [ ] J’ai vérifié les logs (pas de flood d’erreurs silencieuses).
-- [ ] J’ai au moins une **stratégie de rollback** (docker image précédente, branch stable, etc.).
+- [ ] Les variables d'environnement nécessaires sont configurées sur la cible (VPS, Supabase, GCP).
+- [ ] J'ai testé `/health` sur l'environnement cible.
+- [ ] J'ai testé au moins un scénario complet (ex : message WhatsApp → IA → réponse).
+- [ ] **Les tests critiques passent** (Phase 2.5 quality gate).
+- [ ] J'ai vérifié les logs (pas de flood d'erreurs silencieuses).
+- [ ] J'ai au moins une **stratégie de rollback** (docker image précédente, branch stable, etc.).
 
 ---
 
-## 12. Règle d’or
+## 13. Règle d'or
 
 > Si je ne comprends pas 100 % d’un changement proposé par Copilot,  
 > je **n’accepte pas** le code tel quel.  
