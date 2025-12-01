@@ -5,7 +5,6 @@
  */
 
 import { z } from 'zod';
-import type { Assistant, NewAssistant } from '@/db/schema';
 
 export const CreateAssistantSchema = z.object({
   name: z.string().min(2).max(255),
@@ -13,7 +12,7 @@ export const CreateAssistantSchema = z.object({
   isActive: z.boolean().default(true),
   isDefault: z.boolean().default(false),
   model: z.string().default('gemini-1.5-pro'),
-  systemPrompt: z.string().min(10),
+  systemPrompt: z.string().min(10).optional(), // Optionnel - utilise le prompt par défaut si non fourni
   temperature: z.number().min(0).max(2).default(0.7),
   maxTokens: z.number().min(1).max(8192).default(1024),
   enableRag: z.boolean().default(false),

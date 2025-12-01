@@ -7,16 +7,30 @@
  * Gestion des queues, workers et jobs pour IA, WhatsApp, RAG, etc.
  */
 
-import { Queue, Worker, Job, QueueOptions, WorkerOptions } from 'bullmq';
-import { redisPublisher, redisSubscriber } from '@/lib/redis';
-import { logger } from '@/lib/logger';
 import { config } from '@/config/env';
+import { logger } from '@/lib/logger';
+import { redisPublisher, redisSubscriber } from '@/lib/redis';
+import { Job, Queue, QueueOptions, Worker, WorkerOptions } from 'bullmq';
+
+/**
+ * Détection de l'environnement de test
+ */
+const isTestEnv = process.env['NODE_ENV'] === 'test' || process.env['DISABLE_QUEUES'] === 'true';
+
+/**
+ * Mock Redis connection pour les tests
+ */
+const mockRedisConnection = {
+  host: 'localhost',
+  port: 6379,
+  // Propriétés minimales pour satisfaire l'interface BullMQ
+} as any;
 
 /**
  * Configuration de base pour les queues
  */
 const baseQueueConfig: QueueOptions = {
-  connection: redisPublisher,
+  connection: isTestEnv ? mockRedisConnection : redisPublisher,
   defaultJobOptions: {
     removeOnComplete: config.isProd ? 50 : 10,
     removeOnFail: config.isProd ? 50 : 10,
@@ -156,9 +170,54 @@ export const QueueNames = {
 } as const;
 
 /**
- * Création des queues
+ * Mock Queue pour les tests
  */
-export const queues = {
+class MockQueue {
+  constructor(public name: string, public options: any) {}
+
+  async add(jobName: string, data: any, options?: any): Promise<any> {
+    if (isTestEnv) {
+      logger.debug(`Mock queue job added: ${this.name}:${jobName}`, { data });
+      return { id: `mock_${Date.now()}`, data };
+    }
+    throw new Error('MockQueue should only be used in test environment');
+  }
+
+  async close(): Promise<void> {
+    // No-op pour mock
+  }
+
+  async obliterate(): Promise<void> {
+    // No-op pour mock
+  }
+
+  async getWaiting(): Promise<any[]> {
+    return [];
+  }
+
+  async getActive(): Promise<any[]> {
+    return [];
+  }
+
+  async getCompleted(): Promise<any[]> {
+    return [];
+  }
+
+  async getFailed(): Promise<any[]> {
+    return [];
+  }
+}
+
+/**
+ * Création des queues (réelles ou mock selon l'environnement)
+ */
+export const queues = isTestEnv ? {
+  incomingMessages: new MockQueue(QueueNames.INCOMING_MESSAGES, baseQueueConfig),
+  whatsapp: new MockQueue(QueueNames.WHATSAPP, baseQueueConfig),
+  ai: new MockQueue(QueueNames.AI, baseQueueConfig),
+  rag: new MockQueue(QueueNames.RAG, baseQueueConfig),
+  system: new MockQueue(QueueNames.SYSTEM, baseQueueConfig),
+} as any : {
   incomingMessages: new Queue(QueueNames.INCOMING_MESSAGES, {
     ...baseQueueConfig,
     defaultJobOptions: {
@@ -278,6 +337,11 @@ function getQueueNameForJobType(jobType: keyof JobTypes): keyof typeof queues {
  * Fonction principale pour démarrer tous les workers
  */
 export async function startWorkers(): Promise<Worker[]> {
+  if (isTestEnv) {
+    logger.info('Skipping worker startup in test environment');
+    return [];
+  }
+
   logger.info('Starting BullMQ workers...');
 
   const workers: Worker[] = [];
@@ -529,6 +593,11 @@ export async function startWorkers(): Promise<Worker[]> {
  * Fonction pour arrêter tous les workers
  */
 export async function stopWorkers(workers: Worker[]): Promise<void> {
+  if (isTestEnv) {
+    logger.info('Skipping worker shutdown in test environment');
+    return;
+  }
+
   logger.info('Stopping BullMQ workers...');
   
   await Promise.all(
@@ -636,15 +705,25 @@ export async function addIncomingMessageJob(
 /**
  * Helper pour obtenir les statistiques des queues
  */
-export async function getQueueStats() {
+export async function getQueueStats(): Promise<Record<string, any>> {
+  if (isTestEnv) {
+    return {
+      incomingMessages: { waiting: 0, active: 0, completed: 0, failed: 0 },
+      whatsapp: { waiting: 0, active: 0, completed: 0, failed: 0 },
+      ai: { waiting: 0, active: 0, completed: 0, failed: 0 },
+      rag: { waiting: 0, active: 0, completed: 0, failed: 0 },
+      system: { waiting: 0, active: 0, completed: 0, failed: 0 },
+    };
+  }
+
   const stats: Record<string, any> = {};
   
   for (const [name, queue] of Object.entries(queues)) {
     try {
-      const waiting = await queue.getWaiting();
-      const active = await queue.getActive();
-      const completed = await queue.getCompleted();
-      const failed = await queue.getFailed();
+      const waiting = await (queue as any).getWaiting();
+      const active = await (queue as any).getActive();
+      const completed = await (queue as any).getCompleted();
+      const failed = await (queue as any).getFailed();
       
       stats[name] = {
         waiting: waiting.length,

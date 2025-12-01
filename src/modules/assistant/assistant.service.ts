@@ -66,7 +66,7 @@ export class AssistantService {
         isActive: input.isActive ?? true,
         isDefault: input.isDefault ?? false,
         model: input.model || 'gemini-1.5-pro',
-        systemPrompt: input.systemPrompt,
+        systemPrompt: input.systemPrompt || (await import('@/lib/sylion-default-prompt')).getDefaultSystemPrompt(),
         temperature: String(input.temperature ?? 0.7),
         maxTokens: input.maxTokens ?? 1024,
         enableRag: input.enableRag ?? false,

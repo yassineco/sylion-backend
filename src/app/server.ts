@@ -7,21 +7,19 @@
  * Architecture multi-tenant avec sécurité renforcée.
  */
 
-import fastify, { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { config } from '@/config/env';
-import { logger } from '@/lib/logger';
-import { 
-  sendError, 
-  sendSuccess, 
-  generateRequestId, 
-  extractRequestId,
-  ErrorCodes 
-} from '@/lib/http';
-import { initializeDatabase, closeDatabaseConnection } from '@/db/index';
-import { testRedisConnection, closeRedisConnections } from '@/lib/redis';
-import { startWorkers, stopWorkers, getQueueStats } from '@/jobs/index';
-import { registerRoutes } from './routes';
 import type { Worker } from 'bullmq';
+import fastify, { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+
+// Imports locaux avec chemins ESM compatibles
+import { config } from '../config/env.js';
+import { closeDatabaseConnection, initializeDatabase } from '../db/index.js';
+import { getQueueStats, startWorkers, stopWorkers } from '../jobs/index.js';
+import { ErrorCodes, extractRequestId, generateRequestId, sendError, sendSuccess } from '../lib/http.js';
+import { logger } from '../lib/logger.js';
+import { closeRedisConnections, testRedisConnection } from '../lib/redis.js';
+import { registerRoutes } from './routes.js';
+
+
 
 /**
  * Interface pour étendre la requête Fastify avec des propriétés custom

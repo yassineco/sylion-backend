@@ -2,25 +2,25 @@
  * ================================
  * WhatsApp Routes - Sylion Backend
  * ================================
- * 
+ *
  * Routes pour le webhook WhatsApp et les endpoints de gestion.
  */
 
-import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { sendSuccess, sendError, ErrorCodes } from '@/lib/http';
+import { ErrorCodes, sendError, sendSuccess, SylionError } from '@/lib/http';
 import { logger } from '@/lib/logger';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { normalizeIncomingWhatsApp, WhatsAppNormalizationError } from './gateway';
+import type { RawWhatsAppPayload } from './types';
+import { validateWebhook } from './whatsapp.gateway'; // legacy GET webhook
+import { WhatsAppError } from './whatsapp.legacy_types';
 import {
-  handleIncomingWebhook,
-  validateWebhook,
-} from './whatsapp.gateway';
-import {
-  WhatsAppError,
-  WhatsAppErrorCodes,
-} from './whatsapp.types';
+  enqueueIncomingWhatsAppJob,
+  handleIncomingWhatsAppMessage,
+} from './whatsapp_service';
 
 /**
  * ================================
- * Interface des requêtes
+ * Interfaces de requêtes
  * ================================
  */
 
@@ -44,10 +44,9 @@ interface WebhookGetRequest extends FastifyRequest {
  * ================================
  */
 export async function registerWhatsAppRoutes(fastify: FastifyInstance): Promise<void> {
-  
   /**
    * GET /whatsapp/webhook
-   * Validation du webhook par le provider WhatsApp
+   * Validation du webhook (legacy)
    */
   fastify.get<{ Querystring: WebhookValidationQuery }>(
     '/webhook',
@@ -66,14 +65,17 @@ export async function registerWhatsAppRoutes(fastify: FastifyInstance): Promise<
       },
     },
     async (request: WebhookGetRequest, reply: FastifyReply): Promise<void> => {
+      const requestId = (request as any).requestId;
+
       try {
-        const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = request.query;
+        const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } =
+          request.query;
 
         logger.info('WhatsApp webhook validation request', {
           mode,
           hasToken: !!token,
           hasChallenge: !!challenge,
-          requestId: (request as any).requestId,
+          requestId,
         });
 
         if (!mode || !token || !challenge) {
@@ -82,14 +84,13 @@ export async function registerWhatsAppRoutes(fastify: FastifyInstance): Promise<
             ErrorCodes.BAD_REQUEST,
             'Missing required query parameters for webhook validation',
             undefined,
-            (request as any).requestId
+            requestId,
           );
         }
 
         const challengeResponse = await validateWebhook(mode, token, challenge);
 
         if (challengeResponse) {
-          // WhatsApp attend juste le challenge en réponse, pas un JSON
           reply.type('text/plain').send(challengeResponse);
           return;
         }
@@ -99,23 +100,21 @@ export async function registerWhatsAppRoutes(fastify: FastifyInstance): Promise<
           ErrorCodes.UNAUTHORIZED,
           'Webhook verification failed',
           undefined,
-          (request as any).requestId
+          requestId,
         );
-
-      } catch (error) {
+      } catch (err: unknown) {
         logger.error('Error during webhook validation', {
-          error: error instanceof Error ? error.message : String(error),
-          requestId: (request as any).requestId,
+          error: err instanceof Error ? err.message : String(err),
+          requestId,
         });
 
-        if (error instanceof WhatsAppError) {
-          const statusCode = error.code === WhatsAppErrorCodes.WEBHOOK_VERIFICATION_FAILED ? 403 : 400;
+        if (err instanceof WhatsAppError) {
           return sendError(
             reply,
             ErrorCodes.UNAUTHORIZED,
-            error.message,
-            error.details,
-            (request as any).requestId
+            err.message,
+            (err as any).details,
+            requestId,
           );
         }
 
@@ -124,15 +123,15 @@ export async function registerWhatsAppRoutes(fastify: FastifyInstance): Promise<
           ErrorCodes.INTERNAL_SERVER_ERROR,
           'Internal error during webhook validation',
           undefined,
-          (request as any).requestId
+          requestId,
         );
       }
-    }
+    },
   );
 
   /**
    * POST /whatsapp/webhook
-   * Réception des événements WhatsApp
+   * Pipeline WhatsApp Boss 1 (Gateway → Service → Queue)
    */
   fastify.post<{ Body: unknown }>(
     '/webhook',
@@ -140,65 +139,136 @@ export async function registerWhatsAppRoutes(fastify: FastifyInstance): Promise<
       schema: {
         tags: ['WhatsApp'],
         summary: 'Receive WhatsApp webhook events',
-        body: {
-          type: 'object',
-          // Pas de validation stricte du body ici, c'est fait dans le gateway
-        },
+        body: { type: 'object' },
       },
     },
     async (request: WebhookPostRequest, reply: FastifyReply): Promise<void> => {
+      const requestId = (request as any).requestId;
+
       try {
-        logger.info('WhatsApp webhook event received', {
+        logger.info('WhatsApp webhook event received (Boss 1)', {
           hasBody: !!request.body,
           contentType: request.headers['content-type'],
-          requestId: (request as any).requestId,
+          requestId,
         });
 
-        // Traitement du webhook via le gateway
-        await handleIncomingWebhook(request.body);
+        // 1. Payload brut provider
+        const rawPayload: RawWhatsAppPayload = {
+          provider: '360dialog',
+          body: request.body,
+        };
 
-        // Réponse standard WhatsApp (200 OK)
-        return sendSuccess(reply, { 
-          status: 'success',
-          message: 'Webhook processed successfully',
-        }, 200);
+        // 2. Normalisation
+        const normalized = normalizeIncomingWhatsApp(rawPayload);
 
-      } catch (error) {
-        logger.error('Error processing WhatsApp webhook', {
-          error: error instanceof Error ? error.message : String(error),
-          requestId: (request as any).requestId,
+        logger.info('Message normalized successfully', {
+          providerMessageId: normalized.providerMessageId,
+          fromPhone: normalized.fromPhone.substring(0, 8) + '***',
+          toPhone: normalized.toPhone.substring(0, 8) + '***',
+          textLength: normalized.text.length,
+          requestId,
         });
 
-        if (error instanceof WhatsAppError) {
-          // Erreurs métier WhatsApp
-          const statusCode = error.code === WhatsAppErrorCodes.INVALID_PAYLOAD ? 400 : 422;
+        // 3. Service core (tenant/channel/conversation/message)
+        const coreResult = await handleIncomingWhatsAppMessage(normalized);
+
+        logger.info('Core message processing completed', {
+          tenantId: coreResult.tenantId,
+          channelId: coreResult.channelId,
+          conversationId: coreResult.conversationId,
+          messageId: coreResult.messageId,
+          requestId,
+        });
+
+        // 4. Push queue
+        await enqueueIncomingWhatsAppJob(normalized, coreResult);
+
+        logger.info('WhatsApp message processing job enqueued', {
+          tenantId: coreResult.tenantId,
+          conversationId: coreResult.conversationId,
+          requestId,
+        });
+
+        // 5. Réponse WhatsApp (200 OK obligatoire)
+        return sendSuccess(
+          reply,
+          {
+            status: 'accepted',
+            tenantId: coreResult.tenantId,
+            channelId: coreResult.channelId,
+            conversationId: coreResult.conversationId,
+            messageId: coreResult.messageId,
+          },
+          200,
+        );
+      } catch (err: unknown) {
+        logger.error('Error processing WhatsApp webhook (Boss 1)', {
+          error: err instanceof Error ? err.message : String(err),
+          errorType: (err as any)?.constructor?.name ?? 'Unknown',
+          requestId,
+        });
+
+        // 1. Erreur normalisation gateway
+        if (err instanceof WhatsAppNormalizationError) {
+          const msg = (err as Error).message;
+          const details = (err as any).details;
+
           return sendError(
             reply,
-            ErrorCodes.VALIDATION_ERROR,
-            error.message,
-            error.details,
-            (request as any).requestId
+            ErrorCodes.BAD_REQUEST,
+            'Erreur de normalisation: ' + msg,
+            details,
+            requestId,
           );
         }
 
-        // Toujours renvoyer 200 à WhatsApp pour éviter les retry infinis
-        // mais logger l'erreur pour investigation
+        // 2. Erreur métier Sylion (service core)
+        if (err instanceof SylionError) {
+          const details = (err as any).details;
+
+          return sendError(
+            reply,
+            err.code,
+            err.message,
+            details,
+            requestId,
+          );
+        }
+
+        // 3. Erreurs legacy WhatsApp
+        if (err instanceof WhatsAppError) {
+          const details = (err as any).details;
+
+          return sendError(
+            reply,
+            ErrorCodes.VALIDATION_ERROR,
+            err.message,
+            details,
+            requestId,
+          );
+        }
+
+        // 4. Fallback : Toujours 200 pour éviter retry WhatsApp
         logger.error('Returning 200 to WhatsApp despite internal error', {
-          error: error instanceof Error ? error.message : String(error),
-          requestId: (request as any).requestId,
+          error: err instanceof Error ? err.message : String(err),
+          requestId,
         });
 
-        return sendSuccess(reply, {
-          status: 'error',
-          message: 'Webhook received but processing failed',
-        }, 200);
+        return sendSuccess(
+          reply,
+          {
+            status: 'error',
+            message: 'Webhook received but processing failed',
+          },
+          200,
+        );
       }
-    }
+    },
   );
 
   /**
    * GET /whatsapp/status
-   * Endpoint pour vérifier le statut de l'intégration WhatsApp
+   * Simple health-check
    */
   fastify.get(
     '/status',
@@ -208,13 +278,8 @@ export async function registerWhatsAppRoutes(fastify: FastifyInstance): Promise<
         summary: 'Check WhatsApp integration status',
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    async (_request: FastifyRequest, reply: FastifyReply): Promise<void> => {
       try {
-        // TODO: Ajouter des checks de santé plus avancés
-        // - Test de connexion au provider
-        // - Vérification des configs
-        // - État de la queue
-
         return sendSuccess(reply, {
           status: 'operational',
           provider: 'configured',
@@ -222,22 +287,18 @@ export async function registerWhatsAppRoutes(fastify: FastifyInstance): Promise<
           queue: 'connected',
           timestamp: new Date().toISOString(),
         });
-
-      } catch (error) {
+      } catch (err: unknown) {
         logger.error('Error checking WhatsApp status', {
-          error: error instanceof Error ? error.message : String(error),
-          requestId: (request as any).requestId,
+          error: err instanceof Error ? err.message : String(err),
         });
 
         return sendError(
           reply,
           ErrorCodes.INTERNAL_SERVER_ERROR,
           'Failed to check WhatsApp status',
-          undefined,
-          (request as any).requestId
         );
       }
-    }
+    },
   );
 
   logger.info('WhatsApp routes registered successfully');

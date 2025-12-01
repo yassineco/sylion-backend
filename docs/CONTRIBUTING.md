@@ -1,234 +1,328 @@
-# 🦁 Sylion Backend – Guide de Contribution
+Version : 1.0
+Projet : SYLION WhatsApp AI Assistant
+Type : Règles strictes GitHub pour contributions backend
 
-Bienvenue dans le backend principal de la plateforme **SylionAI**.  
-Ce document décrit **les règles officielles** pour contribuer au projet, assurer une qualité constante et maintenir une architecture robuste.
+Merci de contribuer au projet SYLION !
+Ce document décrit toutes les règles obligatoires pour contribuer au backend.
+Toute Pull Request qui ne respecte pas ces règles sera automatiquement rejetée.
 
-Même si tu développes seul au début, ces règles garantissent la cohérence long terme du code et facilitent l’arrivée d’un futur développeur SylionTech.
+1. 📘 Pré-requis (à lire OBLIGATOIREMENT)
 
----
+Avant toute contribution, vous devez avoir lu :
 
-# 🚀 1. Prérequis
+PROJECT_CONTEXT.md
 
-Avant de contribuer, assure-toi d’avoir :
+ARCHITECTURE_RULES.md
 
-- Node.js 20+
-- Docker + Docker Compose
-- Un accès à la DB Supabase (PostgreSQL + pgvector)
-- Un accès GCP pour Vertex AI
-- Un `.env` local valide (jamais commité)
+ENGINEERING_STYLE_GUIDE.md
 
----
+BACKEND_NAMING_CONVENTIONS.md
 
-# 🧭 2. Workflow Git Officiel
+SECURITY_GUIDE.md
 
-Le projet suit le workflow suivant :
+TEST_STRATEGY.md
 
-```
-main      → version stable, déployée en prod
-develop   → intégration continue des features
-feature/* → nouvelles fonctionnalités
-fix/*     → corrections
-chore/*   → maintenance, CI/CD, docs
-```
+⚠️ Si votre contribution contredit un de ces fichiers → PR rejetée.
 
-### 🔧 Créer une nouvelle branche
+2. 🏛️ Architecture obligatoire
 
-```
-git checkout develop
-git pull
-git checkout -b feature/nom-feature
-```
+Le backend SYLION est un monolithe modulaire strict.
 
----
+Vous ne pouvez PAS :
 
-# 📝 3. Normes de Commit (Conventional Commits)
+créer un nouveau module sans justification architecturale
 
-Chaque commit doit suivre le format :
+modifier la structure des dossiers
 
-```
-type(scope): message court
-```
+déplacer des fichiers arbitrairement
 
-### Types autorisés :
-- **feat** : nouvelle fonctionnalité  
-- **fix** : correction de bug  
-- **chore** : changements sans impact métier  
-- **refactor** : amélioration du code  
-- **docs** : documentation  
-- **test** : ajout/maj de tests  
+écrire de la logique métier dans les controllers
 
-### Exemples :
+appeler la DB dans les controllers/gateways
 
-```
-feat(whatsapp): add webhook route
-fix(rag): correct embedding chunk index
-chore(db): add drizzle migration for assistants table
-docs: update engineering rules
-```
+appeler l’IA ailleurs que dans messageProcessor.worker.ts via lib/llm.ts
 
----
+Vous DEVEZ :
 
-# 🔄 4. Pull Requests – Règles obligatoires
+respecter la structure par modules
 
-Avant de soumettre une PR :
+appliquer la separation of concerns
 
-### ✔️ Checklist Qualité
+protéger l’isolation multi-tenant
 
-- [ ] Tests locaux OK  
-- [ ] Linter OK (`npm run lint`)  
-- [ ] Code tapé strict (pas de `any`)  
-- [ ] Services sans logique dupliquée  
-- [ ] Logs nettoyés  
-- [ ] Pas de données sensibles dans les logs (ex : numéros WhatsApp → masqués)  
-- [ ] Migration Drizzle générée si nécessaire  
-- [ ] Documentation mise à jour si impact architecture  
+faire passer chaque message via la queue
 
-### ✔️ Checklist Sécurité
+respecter RAG local-first (pgvector)
 
-- [ ] Aucun secret dans la PR  
-- [ ] Aucun fichier `.env`  
-- [ ] Aucune clé dans les exemples ou captures  
+3. 🧪 Tests obligatoires
 
----
+Toute PR doit inclure :
 
-# 🧩 5. Structure du Code (obligatoire à respecter)
+tests unitaires pour les services / repositories
 
-Le projet suit une architecture **clean & modulaire** :
+tests d’intégration pour les flows WhatsApp & Processor
 
-```
-src/
-  app/        → serveur, routes globales, middlewares
-  modules/    → logique métier segmentée
-  db/         → drizzle, migrations
-  jobs/       → workers BullMQ
-  lib/        → outils généraux
-  config/     → environnement
-```
+tests d’isolation multi-tenant
 
-### 📦 Modules (DDD léger)
+mocks obligatoires (WhatsApp provider, Vertex AI, Redis)
 
-Chaque module doit suivre :
+Une contribution sans tests = refusée.
 
-```
-module/
-  module.routes.ts
-  module.controller.ts
-  module.service.ts
-  module.types.ts
-```
+Structure des tests :
 
-### ❌ Interdictions
+test/
+├─ unit/
+├─ integration/
 
-- Pas de logique métier dans les routes  
-- Pas d’accès DB direct dans les controllers  
-- Pas de code non typé  
-- Pas de dépendances circulaires  
 
----
+Nom des tests :
 
-# 🔥 6. Ajouter un nouveau module
+*.unit.test.ts
+*.int.test.ts
 
-Pour créer un nouveau module (ex : `billing/`) :
+4. 🔡 Conventions de commit
 
-1. Créer le dossier :
-   ```
-   src/modules/billing/
-   ```
+Tous les commits doivent respecter le format :
 
-2. Ajouter les fichiers :
-   ```
-   billing.routes.ts
-   billing.controller.ts
-   billing.service.ts
-   billing.types.ts
-   ```
-3. Ajouter la migration Drizzle si nécessaire  
-4. Exposer les routes dans `app/routes.ts`  
-5. Ajouter les tests unitaires  
-6. Documenter dans `LEARNING_LOG.md` les décisions importantes  
+type(scope): description
 
----
 
-# 📡 7. Workers & Job Queue (BullMQ)
+Types autorisés :
 
-Principes :
-- Tout traitement lourd passe dans **jobs/**  
-- Le thread HTTP doit rester rapide  
-- Usage de Redis centralisé (lib/redis.ts)  
-- Chaque worker doit être autonome  
+feat: nouvelle fonctionnalité
 
-Pour ajouter un worker :
+fix: correction de bug
 
-```
-jobs/myWorker.worker.ts
-```
+refactor: amélioration interne sans changer le comportement
 
-Et l'enregistrer dans `jobs/index.ts`.
+test: ajout/correction de tests
 
----
+docs: documentation
 
-# 🧠 8. Règles TypeScript
+chore: maintenance, scripts, CI
 
-- Pas de `any`  
-- Jamais de logique sans types  
-- Utiliser Zod pour valider les entrées utilisateur  
-- Retourner des objets typés depuis les services  
-- Typage strict des messages WhatsApp et Vertex  
+Exemples valides :
 
----
+feat(assistant): add rag_mode support
+fix(conversation): enforce tenant isolation when fetching a conversation
+refactor(rag): extract chunking logic into dedicated helper
+test(whatsapp): add normalization unit tests
 
-# 🔐 9. Sécurité (critique)
 
-Voir : `docs/SECURITY_GUIDE.md`
+❌ Interdit :
+"update code", "bug fix", "wip".
 
-Résumé :
+5. 🧱 Travail dans les modules (obligations)
+5.1. Controllers
 
-### ❌ Interdit
-- Commettre un `.env`  
-- Coller une clé Vertex/WhatsApp dans Copilot/ChatGPT  
-- Logger des informations sensibles  
-- Mettre un fichier JSON de service account dans le repo  
+input validation uniquement
 
-### ✔️ Obligatoire
-- Masquer les numéros (`+2126xxxxxxx`)  
-- Valider les Webhooks WhatsApp  
-- Nettoyer les logs avant PR  
+pas de logique métier
 
----
+pas d’accès DB direct
 
-# 🧪 10. Tests
+5.2. Services
 
-Les tests (Jest/Vitest) doivent couvrir :
+logique métier seulement
 
-- services (logique métier)  
-- parseurs WhatsApp  
-- workers (simulation job)  
-- RAG (mock embeddings)  
+signature doit inclure tenantId
 
-Pas besoin de tester les routes directement → tester les services.
+vérification permissions obligatoire
 
----
+5.3. Repositories
 
-# 🧭 11. Process de Release
+accès DB via Drizzle uniquement
 
-1. Merger les PR dans `develop`  
-2. Tester la branche en staging (local ou VPS test)  
-3. Merger dans `main`  
-4. Déployer  
-5. Tag version (ex : `v0.1.0`)  
+filtre tenant_id obligatoire
 
----
+pas de SQL brut non justifié
 
-# 📚 12. Ressources internes
+5.4. Workers
 
-- [Règles d’ingénierie](./docs/ENGINEERING_RULES.md)
-- [Guide de sécurité](./docs/SECURITY_GUIDE.md)
-- [Learning Log](./docs/LEARNING_LOG.md)
+orchestrent conversation → RAG → IA → réponses WhatsApp
 
----
+ne peuvent PAS écrire directement dans WhatsApp provider
 
-# 🙌 Merci
+6. 🔐 Sécurité & multi-tenant
 
-Chaque contribution doit améliorer la stabilité, la lisibilité ou la sécurité du système.  
-SylionBackend est un produit long terme → garde en tête la vision à 5 ans.
+Chaque PR doit garantir :
 
+aucune fuite cross-tenant
+
+filtre tenant_id systématique dans chaque requête
+
+validation des permissions
+
+isolation stricte RAG/phrases/usage/messages
+
+Tout manquement → PR rejetée immédiatement.
+
+7. 🔥 Règles IA (ChatGPT, Copilot, Cursor…)
+
+L’utilisation d’IA est autorisée mais régulée.
+
+Vous DEVEZ :
+
+utiliser le fichier SYLION_CODING_PROMPT.md
+
+charger les docs d’architecture dans toutes les sessions IA
+
+analyser avant de générer du code
+
+respecter strictement les conventions
+
+Vous NE POUVEZ PAS :
+
+appliquer un refactor global proposé par Copilot sans validation
+
+introduire un pattern non validé (DTO, pipelines custom, CQRS…)
+
+générer des fichiers hors structure
+
+Si l’IA propose une modification architecturale → refuser.
+
+8. 🔍 Checklist Pull Request (OBLIGATOIRE)
+
+Chaque PR doit contenir cette checklist cochée :
+
+Architecture
+
+ Respecte PROJECT_CONTEXT.md
+
+ Respecte ARCHITECTURE_RULES.md
+
+ Aucun contournement des modules officiels
+
+ Pas de logique métier dans controllers/gateways
+
+ Pas d'accès DB hors repositories
+
+Multi-tenant
+
+ tenantId propagé correctement
+
+ Requêtes filtrées par tenant_id
+
+ Aucun accès cross-tenant possible
+
+IA/RAG
+
+ RAG intégré via rag.orchestrator.ts
+
+ LLM appelé via lib/llm.ts
+
+ Aucun appel IA ailleurs
+
+Qualité
+
+ Tests unitaires inclus
+
+ Tests d’intégration inclus
+
+ Mocks ajoutés pour providers externes
+
+ Style TypeScript conforme (TS strict)
+
+ Naming conventions respectées
+
+Sécurité
+
+ Aucun secret dans le code
+
+ Aucun endpoint exposé inutilement
+
+ Sanitization des inputs
+
+Docs
+
+ Mise à jour des docs si nécessaire
+
+ Changelog / commentaire PR clair
+
+Sans cette checklist → PR refusée.
+
+9. 🧭 Workflow Git
+9.1. Branches
+
+main → production only
+
+dev → intégration continue
+
+feature branches → feature/<nom>
+
+fix branches → fix/<nom>
+
+Exemples :
+
+feature/rag-local-improvements
+fix/multi-tenant-conversation-bug
+feature/assistant-config-ui
+
+
+❌ Pas de commits directs sur main ou dev.
+
+10. 🛑 Contributions interdites
+
+refactor global sans demande explicite
+
+suppression d’un module entier
+
+ajout d’un module sans justification dans PR
+
+modifications structurelles non validées
+
+ajout de dépendances inutiles
+
+contournement des queues (BullMQ)
+
+contournement du RAG orchestrator
+
+ajout de logique dans Gateway
+
+modifier la DB sans migration Drizzle
+
+11. 📦 Avant de soumettre la PR
+
+Vous devez :
+
+Lancer tous les tests
+
+Réparer toutes les erreurs linter
+
+Vérifier la cohérence avec l’architecture
+
+Relire le code (self-review)
+
+Remplir la checklist
+
+12. 🦁 Posture attendue
+
+Vous devez agir comme :
+
+un gardien de l’architecture,
+
+un développeur senior rigoureux,
+
+un collaborateur respectant les normes entreprise,
+
+et un professionnel responsable de la qualité.
+
+Toute contribution doit être :
+
+claire
+
+propre
+
+minimale
+
+cohérente
+
+testée
+
+alignée avec SYLION
+
+13. 🏁 Fin du CONTRIBUTING.md
+
+Toute contribution non conforme sera refusée.
+Merci de respecter l’exigence et la qualité du projet SYLION.
+Vos efforts sont appréciés — construisons un produit solide, durable et professionnel.
