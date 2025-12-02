@@ -3,6 +3,8 @@
  * This is a minimal test to verify the test setup works
  */
 
+import { describe, expect, it } from '@jest/globals';
+
 describe('TenantService', () => {
   describe('Sample Tests', () => {
     it('should pass a basic test', () => {

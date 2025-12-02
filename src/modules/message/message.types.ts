@@ -5,7 +5,6 @@
  */
 
 import { z } from 'zod';
-import type { Message, NewMessage } from '@/db/schema';
 
 export const CreateMessageSchema = z.object({
   type: z.enum(['text', 'image', 'audio', 'document', 'system']),
@@ -15,9 +14,14 @@ export const CreateMessageSchema = z.object({
   externalId: z.string().optional(),
   externalTimestamp: z.date().optional(),
   status: z.enum(['pending', 'processed', 'failed', 'delivered']).default('pending'),
+  ragUsed: z.boolean().default(false),
+  ragResults: z.record(z.any()).nullable().optional(),
 });
 
 export const UpdateMessageSchema = CreateMessageSchema.partial();
 
-export type CreateMessageInput = z.infer<typeof CreateMessageSchema>;
+// Type pour l'entrée (avant transformation par zod - les champs avec defaults sont optionnels)
+export type CreateMessageInput = z.input<typeof CreateMessageSchema>;
+// Type pour la sortie (après transformation par zod)
+export type CreateMessageOutput = z.infer<typeof CreateMessageSchema>;
 export type UpdateMessageInput = z.infer<typeof UpdateMessageSchema>;

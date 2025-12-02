@@ -140,10 +140,7 @@ export interface JobTypes {
   'rag:update-embeddings': {
     tenantId: string;
     documentId: string;
-    chunks: Array<{
-      text: string;
-      metadata: Record<string, any>;
-    }>;
+    forceReindex?: boolean;
   };
 
   // System Jobs
@@ -482,9 +479,15 @@ export async function stopWorkers(workers: Worker[]): Promise<void> {
 
 // Import des handlers de jobs
 import {
-  processIncomingMessage,
-  processWhatsAppIncoming,
+    processIncomingMessage,
+    processWhatsAppIncoming,
 } from './messageProcessor.worker';
+
+// Import des handlers RAG
+import {
+    processRagIndexDocument,
+    processRagUpdateEmbeddings,
+} from './rag.worker';
 
 /**
  * Mapping des handlers par type de job
@@ -510,16 +513,13 @@ const jobHandlers: Record<string, (job: Job) => Promise<any>> = {
     throw new Error('AI generate-response handler not implemented');
   },
 
-  // RAG jobs - à implémenter
-  'rag:index-document': async () => {
-    throw new Error('RAG index-document handler not implemented');
-  },
+  // RAG jobs - IMPLÉMENTÉS
+  'rag:index-document': processRagIndexDocument,
   'rag:search-similar': async () => {
-    throw new Error('RAG search-similar handler not implemented');
+    // Non utilisé comme job queue - la recherche est synchrone dans le worker
+    throw new Error('rag:search-similar is a synchronous operation, not a queued job');
   },
-  'rag:update-embeddings': async () => {
-    throw new Error('RAG update-embeddings handler not implemented');
-  },
+  'rag:update-embeddings': processRagUpdateEmbeddings,
 
   // System jobs - à implémenter
   'system:cleanup-conversations': async () => {

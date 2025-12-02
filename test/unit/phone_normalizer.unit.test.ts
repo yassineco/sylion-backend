@@ -10,6 +10,7 @@
  */
 
 import { normalizePhoneNumber } from '@/modules/whatsapp/types';
+import { describe, expect, it } from '@jest/globals';
 
 describe('normalizePhoneNumber', () => {
   

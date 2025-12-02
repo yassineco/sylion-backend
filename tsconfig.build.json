@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    /* ================================
+     * Build Output Configuration
+     * ================================
+     * Strict build for production src/ only.
+     * Used by: npm run build
+     */
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "removeComments": true,
+    "noEmitOnError": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "types/**/*"],
+  "exclude": ["test", "node_modules", "dist", "coverage", "docs"]
+}

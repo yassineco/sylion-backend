@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    /* ================================
+     * Test Configuration (Relaxed Rules)
+     * ================================
+     * Permissive settings for fast test development.
+     * Used by: Jest via ts-jest
+     */
+    "noEmit": true,
+
+    /* Relaxed strict rules for tests */
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "noUncheckedIndexedAccess": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "strictPropertyInitialization": false,
+
+    "types": ["node", "jest"]
+  },
+  "include": ["src/**/*", "test/**/*", "types/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

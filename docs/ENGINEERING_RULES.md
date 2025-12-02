@@ -156,7 +156,110 @@ Voir `SECURITY_GUIDE.md` pour les règles strictes.
 
 ---
 
-# 11. Vision long terme
+# 11. TypeScript Configuration Rules
+
+## Architecture 4-Configs
+
+Le projet utilise une architecture TypeScript en 4 configurations séparées :
+
+```
+tsconfig.base.json          ← STRICT config partagée (core rules)
+    ↓
+    ├── tsconfig.json       ← VS Code IntelliSense (src + test, noEmit)
+    ├── tsconfig.build.json ← Production build (src only, STRICT)
+    └── tsconfig.test.json  ← Jest tests (src + test, relaxed rules)
+```
+
+## Fichiers et leurs rôles
+
+### `tsconfig.base.json` – Trunk STRICT
+
+Configuration de base partagée avec **toutes les règles strictes activées** :
+
+```jsonc
+{
+  "strict": true,
+  "noImplicitAny": true,
+  "strictNullChecks": true,
+  "strictFunctionTypes": true,
+  "strictBindCallApply": true,
+  "strictPropertyInitialization": true,
+  "noImplicitReturns": true,
+  "noFallthroughCasesInSwitch": true,
+  "noUncheckedIndexedAccess": true,
+  "noImplicitOverride": true
+}
+```
+
+**Ne jamais modifier ce fichier** pour relâcher les règles. Il représente le standard production.
+
+### `tsconfig.build.json` – Build Production
+
+- Hérite de `tsconfig.base.json`
+- Compile uniquement `src/**/*`
+- Utilisé par `npm run build` et CI/CD
+- **STRICT** : aucune relaxation permise
+
+```jsonc
+{
+  "extends": "./tsconfig.base.json",
+  "include": ["src/**/*", "types/**/*"],
+  "exclude": ["test", "node_modules", "dist"]
+}
+```
+
+### `tsconfig.test.json` – Tests Relaxed
+
+- Hérite de `tsconfig.base.json`
+- **Relaxe** les règles pour les tests :
+  - `noImplicitAny: false`
+  - `strictNullChecks: false`
+  - `noUnusedLocals: false`
+  - `noUnusedParameters: false`
+  - `strictPropertyInitialization: false`
+- Utilisé par Jest via `ts-jest`
+
+**Justification** : Les tests utilisent des mocks, fixtures et données partielles qui ne nécessitent pas la rigueur du code production.
+
+### `tsconfig.json` – Editor VS Code
+
+- Hérite de `tsconfig.base.json`
+- Inclut `src/**/*` + `test/**/*` pour IntelliSense complet
+- `noEmit: true` (pas de compilation)
+- Configuration par défaut utilisée par VS Code
+
+**Objectif** : Zéro erreur dans l'onglet Problems, IntelliSense fonctionnel partout.
+
+## Guidelines
+
+### ✅ DO
+
+- Utiliser `npm run build` (tsconfig.build.json) pour valider le code production
+- Utiliser `npm run type-check` pour CI/CD
+- Utiliser `npm run test:ts` pour valider les types des tests
+- Garder les règles strictes dans `tsconfig.base.json`
+
+### ❌ DON'T
+
+- Ne pas modifier `tsconfig.base.json` pour relâcher les règles
+- Ne pas ajouter `@ts-ignore` ou `@ts-nocheck` dans `src/`
+- Ne pas contourner les erreurs de build avec des casts `as any`
+- Ne pas mélanger les configurations (ex: hériter de test dans build)
+
+## Scripts associés
+
+```json
+{
+  "build": "tsc -p tsconfig.build.json",
+  "type-check": "tsc -p tsconfig.build.json --noEmit",
+  "type-check:test": "tsc -p tsconfig.test.json --noEmit",
+  "test:ts": "tsc -p tsconfig.test.json --noEmit"
+}
+```
+
+---
+
+# 12. Vision long terme
 
 Cette architecture doit pouvoir évoluer vers :
 

@@ -7,13 +7,14 @@
  * ne peut accéder aux données d'un autre tenant.
  */
 
+import { beforeAll, beforeEach, describe, expect, it } from '@jest/globals';
+import { eq } from 'drizzle-orm';
 import { db, schema } from '../../src/db/index';
-import { TenantService } from '../../src/modules/tenant/tenant.service';
+import { AssistantService } from '../../src/modules/assistant/assistant.service';
 import { ChannelService } from '../../src/modules/channel/channel.service';
 import { ConversationService } from '../../src/modules/conversation/conversation.service';
-import { AssistantService } from '../../src/modules/assistant/assistant.service';
 import { MessageService } from '../../src/modules/message/message.service';
-import { eq } from 'drizzle-orm';
+import { TenantService } from '../../src/modules/tenant/tenant.service';
 
 describe('Multi-Tenant Fence Tests', () => {
   let tenantService: TenantService;

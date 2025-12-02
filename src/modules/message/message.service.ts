@@ -60,6 +60,8 @@ export class MessageService {
           externalId: input.externalId,
           externalTimestamp: input.externalTimestamp,
           status: input.status || 'pending',
+          ragUsed: input.ragUsed || false,
+          ragResults: input.ragResults || null,
         })
         .returning();
 

@@ -4,7 +4,7 @@
  * ================================
  * 
  * Worker BullMQ pour traiter les messages WhatsApp entrants.
- * Pipeline : Résolution tenant/channel -> Conversation -> Message -> IA -> Réponse
+ * Pipeline : Résolution tenant/channel -> Conversation -> Message -> RAG -> IA -> Réponse
  */
 
 import { db, schema } from '@/db/index';
@@ -13,6 +13,8 @@ import { logger } from '@/lib/logger';
 import { assistantService } from '@/modules/assistant/assistant.service';
 import { conversationService } from '@/modules/conversation/conversation.service';
 import { messageService } from '@/modules/message/message.service';
+import type { RagContext } from '@/modules/rag';
+import { formatContextForPrompt, ragService } from '@/modules/rag';
 import { tenantService } from '@/modules/tenant/tenant.service';
 import type { NormalizedIncomingMessage } from '@/modules/whatsapp/types';
 import { maskPhoneNumber } from '@/modules/whatsapp/types';
@@ -125,11 +127,11 @@ export async function processIncomingMessage(
     // 2. Enregistrement du message utilisateur
     const userMessage = await saveUserMessage(context);
     
-    // 3. Génération de la réponse IA
-    const assistantReply = await generateReply(context);
+    // 3. Génération de la réponse IA (avec RAG si activé)
+    const { reply: assistantReply, ragContext } = await generateReply(context);
     
-    // 4. Enregistrement du message assistant
-    const assistantMessage = await saveAssistantMessage(context, assistantReply);
+    // 4. Enregistrement du message assistant (avec info RAG)
+    const assistantMessage = await saveAssistantMessage(context, assistantReply, ragContext);
     
     // 5. Envoi de la réponse WhatsApp
     await sendReplyToWhatsApp(context, assistantReply);
@@ -143,6 +145,8 @@ export async function processIncomingMessage(
       userMessageId: userMessage.id,
       assistantMessageId: assistantMessage.id,
       replyLength: assistantReply.length,
+      ragUsed: !!ragContext,
+      ragChunksUsed: ragContext?.chunks.length || 0,
     });
 
   } catch (error) {
@@ -395,10 +399,13 @@ async function saveUserMessage(context: MessageProcessorContext) {
 
 /**
  * ================================
- * Étape 3 : Génération de la réponse IA
+ * Étape 3 : Génération de la réponse IA (avec RAG)
  * ================================
  */
-async function generateReply(context: MessageProcessorContext): Promise<string> {
+async function generateReply(context: MessageProcessorContext): Promise<{
+  reply: string;
+  ragContext: RagContext | null;
+}> {
   try {
     // Récupérer l'historique récent de la conversation
     const recentMessages = await messageService.getMessagesByConversation(context.conversationId);
@@ -417,11 +424,62 @@ async function generateReply(context: MessageProcessorContext): Promise<string> 
       content: context.message.text || '',
     });
 
-    // Générer la réponse
+    // ================================
+    // RAG : Récupération du contexte documentaire
+    // ================================
+    let ragContext: RagContext | null = null;
+    let ragContextText: string | undefined;
+
+    // Récupérer la configuration de l'assistant
+    const assistant = await assistantService.getAssistantById(context.assistantId, context.tenantId);
+    
+    if (assistant?.enableRag) {
+      logger.info('RAG enabled for assistant, searching relevant context', {
+        conversationId: context.conversationId,
+        assistantId: context.assistantId,
+        ragThreshold: assistant.ragThreshold,
+        ragMaxResults: assistant.ragMaxResults,
+      });
+
+      // Récupérer le contexte RAG
+      ragContext = await ragService.getRelevantContext(
+        context.tenantId,
+        context.assistantId,
+        context.message.text || '',
+        {
+          enabled: true,
+          threshold: parseFloat(String(assistant.ragThreshold || '0.7')),
+          maxResults: assistant.ragMaxResults || 5,
+        }
+      );
+
+      if (ragContext && ragContext.chunks.length > 0) {
+        ragContextText = formatContextForPrompt(ragContext, {
+          includeDocumentName: true,
+          includeScore: false,
+          format: 'simple',
+        });
+
+        logger.info('RAG context found and formatted', {
+          conversationId: context.conversationId,
+          chunksUsed: ragContext.chunks.length,
+          documentsUsed: ragContext.documentsUsed.length,
+          totalTokens: ragContext.totalTokens,
+        });
+      } else {
+        logger.debug('No relevant RAG context found', {
+          conversationId: context.conversationId,
+          assistantId: context.assistantId,
+        });
+      }
+    }
+
+    // Générer la réponse avec contexte RAG si disponible
     const reply = await generateAssistantReply({
       tenantId: context.tenantId,
       assistantId: context.assistantId,
       messages,
+      ragContext: ragContextText,
     });
 
     logger.debug('Assistant reply generated', {
@@ -429,9 +487,10 @@ async function generateReply(context: MessageProcessorContext): Promise<string> 
       assistantId: context.assistantId,
       replyLength: reply.length,
       contextMessages: messages.length,
+      ragUsed: !!ragContext,
     });
 
-    return reply;
+    return { reply, ragContext };
 
   } catch (error) {
     logger.error('Error generating assistant reply', {
@@ -445,24 +504,42 @@ async function generateReply(context: MessageProcessorContext): Promise<string> 
 
 /**
  * ================================
- * Étape 4 : Sauvegarde du message assistant
+ * Étape 4 : Sauvegarde du message assistant (avec info RAG)
  * ================================
  */
 async function saveAssistantMessage(
   context: MessageProcessorContext,
-  reply: string
+  reply: string,
+  ragContext: RagContext | null
 ) {
   try {
+    // Préparer les résultats RAG si disponibles
+    const ragResults = ragContext ? {
+      chunksUsed: ragContext.chunks.map(chunk => ({
+        chunkId: chunk.chunkId,
+        documentId: chunk.documentId,
+        documentName: chunk.documentName,
+        score: chunk.score,
+        tokenCount: chunk.tokenCount,
+      })),
+      documentsUsed: ragContext.documentsUsed,
+      totalTokens: ragContext.totalTokens,
+      searchQuery: ragContext.searchQuery,
+    } : null;
+
     const assistantMessage = await messageService.createMessage(context.conversationId, {
       type: 'text',
       direction: 'outbound',
       content: reply,
       status: 'processed',
+      ragUsed: !!ragContext,
+      ragResults: ragResults,
       metadata: {
         generation: {
           assistantId: context.assistantId,
           tenantId: context.tenantId,
           timestamp: new Date().toISOString(),
+          ragEnabled: !!ragContext,
         },
         whatsapp: {
           willSendTo: context.message.from.phoneNumber,
@@ -474,6 +551,7 @@ async function saveAssistantMessage(
       messageId: assistantMessage.id,
       conversationId: context.conversationId,
       contentLength: assistantMessage.content.length,
+      ragUsed: !!ragContext,
     });
 
     return assistantMessage;

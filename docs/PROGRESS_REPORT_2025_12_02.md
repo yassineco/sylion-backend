@@ -122,6 +122,91 @@ PGPASSWORD=dev_password psql -h localhost -p 5433 -U sylion_dev -d sylion_dev -c
 
 ---
 
+## 🏗️ 9. Refonte Configuration TypeScript (Session PM)
+
+### Problématique initiale
+
+Le projet souffrait de conflits entre :
+- **Build STRICT** requis pour la production (`src/`)
+- **Tests permissifs** nécessaires pour développement rapide (`test/`)
+- **IntelliSense VS Code** qui affichait des erreurs parasites
+
+Les règles `strictPropertyInitialization`, `noImplicitAny`, `strictNullChecks` causaient des frictions majeures dans les tests sans apporter de valeur (mocks, fixtures, données de test).
+
+### Solution : Architecture 4-Configs
+
+```
+tsconfig.base.json          ← STRICT config partagée (core rules)
+    ↓
+    ├── tsconfig.json       ← VS Code IntelliSense (src + test, noEmit)
+    ├── tsconfig.build.json ← Production build (src only, STRICT)
+    └── tsconfig.test.json  ← Jest tests (src + test, relaxed rules)
+```
+
+| Fichier | Rôle | Strict Level |
+|---------|------|--------------|
+| `tsconfig.base.json` | Trunk strict partagé | 🔒 FULL STRICT |
+| `tsconfig.build.json` | Build production CI/CD | 🔒 FULL STRICT |
+| `tsconfig.test.json` | Tests Jest | ⚡ Relaxed |
+| `tsconfig.json` | Editor VS Code | ⚡ Relaxed (hérite base) |
+
+### Règles relaxées pour les tests
+
+```jsonc
+{
+  "noImplicitAny": false,
+  "strictNullChecks": false,
+  "noUncheckedIndexedAccess": false,
+  "noUnusedLocals": false,
+  "noUnusedParameters": false,
+  "strictPropertyInitialization": false
+}
+```
+
+### Décision de pointage VS Code
+
+- `tsconfig.json` à la racine = configuration par défaut de VS Code
+- Inclut `src/**/*` + `test/**/*` pour IntelliSense complet
+- Hérite de `tsconfig.base.json` avec règles relâchées
+- Résultat : **0 erreur dans l'onglet Problems**
+
+### Scripts package.json mis à jour
+
+```json
+{
+  "build": "tsc -p tsconfig.build.json",
+  "type-check": "tsc -p tsconfig.build.json --noEmit",
+  "type-check:test": "tsc -p tsconfig.test.json --noEmit",
+  "test:ts": "tsc -p tsconfig.test.json --noEmit"
+}
+```
+
+### Résultats de validation
+
+| Vérification | Statut |
+|--------------|--------|
+| `tsc -p tsconfig.build.json --noEmit` | ✅ Passe |
+| `tsc -p tsconfig.test.json --noEmit` | ✅ Passe |
+| `npm test` | ✅ 147 tests passent |
+| VS Code Problems | ✅ 0 erreur |
+| `npm run build` | ✅ Compile sans erreur |
+
+### Impact sur le projet SylionAI
+
+1. **Développement accéléré** : Tests sans friction TypeScript
+2. **Production sécurisée** : Build STRICT garantit la qualité du code source
+3. **DX améliorée** : VS Code ne montre plus d'erreurs parasites
+4. **CI/CD robuste** : Séparation claire des configs
+
+### Next Steps
+
+1. **ESLint strict** : Configurer règles strictes pour `src/` uniquement
+2. **Prettier** : Formattage cohérent avec pre-commit hooks
+3. **Stabilisation tests workers** : Corriger `rag-index.int.test.ts`
+4. **Documentation** : Mettre à jour ENGINEERING_RULES.md
+
+---
+
 ## ✅ 7. Statut global
 
 | Component | Status |

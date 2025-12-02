@@ -1,79 +1,17 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    /* Base Options */
-    "target": "ES2022",
-    "module": "ESNext",
-    "lib": ["ES2022"],
-    "moduleResolution": "node",
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
-    "allowJs": false,
-    "checkJs": false,
-    "types": ["node"],
-    
-    /* Strict Type Checking */
-    "strict": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "strictBindCallApply": true,
-    "strictPropertyInitialization": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "exactOptionalPropertyTypes": false,
-    
-    /* Module Resolution */
-    "baseUrl": "src",
-    "paths": {
-      "@/*": ["*"],
-      "@/app/*": ["app/*"],
-      "@/modules/*": ["modules/*"],
-      "@/lib/*": ["lib/*"],
-      "@/db/*": ["db/*"],
-      "@/jobs/*": ["jobs/*"],
-      "@/config/*": ["config/*"]
-    },
-    
-    /* Output */
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "removeComments": true,
-    "noEmitOnError": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    
-    /* Interop Constraints */
-    "isolatedModules": true,
-    "verbatimModuleSyntax": false,
-    "forceConsistentCasingInFileNames": true,
-    
-    /* Skip Lib Check for faster compilation */
-    "skipLibCheck": true,
-    
-    /* Experimental */
-    "experimentalDecorators": false,
-    "emitDecoratorMetadata": false,
-    
-    /* Advanced */
-    "resolveJsonModule": true,
-    "useDefineForClassFields": true,
-    "noPropertyAccessFromIndexSignature": true
+    /* ================================
+     * Editor Configuration (VS Code IntelliSense)
+     * ================================
+     * Used by: VS Code, IDE tooling
+     * Includes both src/ and test/ for full IntelliSense support.
+     */
+    "noEmit": true,
+    "types": ["node", "jest"]
   },
-  "include": [
-    "src/**/*",
-    "types/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/*.test.ts",
-    "**/*.spec.ts",
-    "coverage",
-    "docs"
-  ],
+  "include": ["src/**/*", "test/**/*", "types/**/*"],
+  "exclude": ["node_modules", "dist", "coverage", "docs"],
   "ts-node": {
     "esm": true,
     "experimentalSpecifierResolution": "node"

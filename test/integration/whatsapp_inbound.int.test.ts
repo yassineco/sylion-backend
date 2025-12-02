@@ -14,6 +14,8 @@
  * ou supprimer si redondant avec whatsapp-webhook.int.test.ts
  */
 
+import { describe, expect, it } from '@jest/globals';
+
 // Skip ce fichier de test jusqu'à la refactorisation
 describe.skip('WhatsApp Inbound Integration Tests (LEGACY - Needs Refactoring)', () => {
   it('placeholder - see whatsapp-webhook.int.test.ts for up-to-date tests', () => {

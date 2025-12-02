@@ -28,6 +28,8 @@ export interface GenerateReplyOptions {
   messages: LLMMessage[];
   maxTokens?: number;
   temperature?: number;
+  /** Contexte RAG à injecter dans le prompt (optionnel) */
+  ragContext?: string;
 }
 
 export interface LLMResponse {
@@ -149,6 +151,7 @@ export async function generateAssistantReply(
       tenantId: options.tenantId,
       assistantId: options.assistantId,
       messagesCount: options.messages.length,
+      hasRagContext: !!options.ragContext,
     });
 
     // Récupérer la configuration de l'assistant
@@ -161,9 +164,35 @@ export async function generateAssistantReply(
     const { getDefaultSystemPrompt } = await import('@/lib/sylion-default-prompt');
     
     // S'assurer qu'il y a un prompt système (utiliser le défaut si nécessaire)
-    const systemPrompt = assistant.systemPrompt && assistant.systemPrompt.length >= 10 
+    let systemPrompt = assistant.systemPrompt && assistant.systemPrompt.length >= 10 
       ? assistant.systemPrompt 
       : getDefaultSystemPrompt();
+
+    // ================================
+    // INJECTION DU CONTEXTE RAG
+    // ================================
+    if (options.ragContext) {
+      const ragSection = `
+## Contexte Documentaire (RAG)
+
+Les informations suivantes proviennent de la base documentaire du client.
+Utilisez-les pour répondre de manière précise et factuelle.
+Si la question de l'utilisateur correspond à ce contexte, basez votre réponse dessus.
+Si la question ne correspond pas au contexte, répondez normalement sans mentionner ces documents.
+
+---
+${options.ragContext}
+---
+
+`;
+      // Injecter le contexte RAG au début du prompt système
+      systemPrompt = ragSection + systemPrompt;
+      
+      logger.debug('RAG context injected into system prompt', {
+        ragContextLength: options.ragContext.length,
+        totalPromptLength: systemPrompt.length,
+      });
+    }
 
     const assistantConfig = {
       ...assistant,
@@ -187,6 +216,7 @@ export async function generateAssistantReply(
       assistantId: options.assistantId,
       userMessageLength: lastUserMessage.content.length,
       replyLength: reply.length,
+      ragUsed: !!options.ragContext,
     });
 
     return reply;

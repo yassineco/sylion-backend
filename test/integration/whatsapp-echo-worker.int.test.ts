@@ -12,10 +12,18 @@
  * - Retry automatique BullMQ (mock)
  */
 
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { Job } from 'bullmq';
+import type { Mock } from 'jest-mock';
 import type { JobTypes } from '../../src/jobs/index';
 import { processWhatsAppIncoming } from '../../src/jobs/messageProcessor.worker';
+import type { WhatsAppSendResponse } from '../../src/modules/whatsapp/types';
 import { whatsAppProvider } from '../../src/modules/whatsapp/whatsapp.provider';
+
+// Type helper pour les mocks
+const mockSendTextMessage = whatsAppProvider.sendTextMessage as Mock<
+  (to: string, text: string, options?: unknown) => Promise<WhatsAppSendResponse>
+>;
 
 // Mock du provider WhatsApp
 jest.mock('../../src/modules/whatsapp/whatsapp.provider', () => ({
@@ -36,6 +44,17 @@ jest.mock('../../src/lib/logger', () => ({
 }));
 
 /**
+ * Helper pour créer une réponse mockée du provider
+ */
+function createMockResponse(messageId?: string, phoneNumber = '212600000001'): WhatsAppSendResponse {
+  return {
+    messaging_product: 'whatsapp',
+    messages: messageId ? [{ id: messageId }] : [],
+    contacts: messageId ? [{ input: `+${phoneNumber}`, wa_id: phoneNumber }] : [],
+  };
+}
+
+/**
  * ================================
  * Helpers - Mock Job
  * ================================
@@ -43,21 +62,22 @@ jest.mock('../../src/lib/logger', () => ({
 function createMockJob(
   data: Partial<JobTypes['whatsapp:process-incoming']> = {}
 ): Job<JobTypes['whatsapp:process-incoming']> {
+  const defaultData: JobTypes['whatsapp:process-incoming'] = {
+    tenantId: 'test-tenant-id',
+    channelId: 'test-channel-id',
+    conversationId: 'test-conversation-id',
+    messageId: 'test-message-id',
+    from: '+212600000001',
+    message: {
+      type: 'text',
+      content: 'Bonjour Sylion!',
+    },
+    timestamp: new Date().toISOString(),
+  };
+
   return {
     id: 'test-job-123',
-    data: {
-      tenantId: 'test-tenant-id',
-      channelId: 'test-channel-id',
-      conversationId: 'test-conversation-id',
-      messageId: 'test-message-id',
-      from: '+212600000001',
-      message: {
-        content: 'Bonjour Sylion!',
-        type: 'text',
-        timestamp: new Date().toISOString(),
-      },
-      ...data,
-    },
+    data: { ...defaultData, ...data },
     name: 'whatsapp:process-incoming',
     queueName: 'message-processor',
   } as unknown as Job<JobTypes['whatsapp:process-incoming']>;
@@ -84,15 +104,16 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
       // Arrange
       const mockJob = createMockJob({
         from: '+212661976863',
-        message: { content: 'Hello World!', type: 'text', timestamp: new Date().toISOString() },
+        message: { content: 'Hello World!', type: 'text' },
       });
 
-      const mockSendResponse = {
-        messages: [{ id: 'whatsapp-msg-12345', message_status: 'sent' }],
-        contacts: [{ wa_id: '212661976863' }],
+      const mockSendResponse: WhatsAppSendResponse = {
+        messaging_product: 'whatsapp',
+        messages: [{ id: 'whatsapp-msg-12345', message_status: 'accepted' }],
+        contacts: [{ input: '+212661976863', wa_id: '212661976863' }],
       };
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockResolvedValueOnce(mockSendResponse);
+      mockSendTextMessage.mockResolvedValueOnce(mockSendResponse);
 
       // Act
       const result = await processWhatsAppIncoming(mockJob);
@@ -120,14 +141,12 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
         message: {
           content: '🎉 C\'est super! Merci 👍',
           type: 'text',
-          timestamp: new Date().toISOString(),
         },
       });
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockResolvedValueOnce({
-        messages: [{ id: 'msg-emoji-test' }],
-        contacts: [],
-      });
+      mockSendTextMessage.mockResolvedValueOnce(
+        createMockResponse('msg-emoji-test')
+      );
 
       // Act
       await processWhatsAppIncoming(mockJob);
@@ -144,13 +163,12 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
       // Arrange - Message long (4000 caractères)
       const longContent = 'A'.repeat(4000);
       const mockJob = createMockJob({
-        message: { content: longContent, type: 'text', timestamp: new Date().toISOString() },
+        message: { content: longContent, type: 'text' },
       });
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockResolvedValueOnce({
-        messages: [{ id: 'msg-long' }],
-        contacts: [],
-      });
+      mockSendTextMessage.mockResolvedValueOnce(
+        createMockResponse('msg-long')
+      );
 
       // Act
       await processWhatsAppIncoming(mockJob);
@@ -172,10 +190,9 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
         messageId: 'msg-abc-123',
       });
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockResolvedValueOnce({
-        messages: [{ id: 'provider-msg-id' }],
-        contacts: [],
-      });
+      mockSendTextMessage.mockResolvedValueOnce(
+        createMockResponse('provider-msg-id')
+      );
 
       // Act
       await processWhatsAppIncoming(mockJob);
@@ -196,10 +213,12 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
       const providerMessageId = 'wamid.HBgLMjEyNjYxOTc2ODYzFQIAEhggNTY3ODlBQkM=';
       const mockJob = createMockJob();
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockResolvedValueOnce({
-        messages: [{ id: providerMessageId, message_status: 'sent' }],
-        contacts: [{ wa_id: '212600000001' }],
-      });
+      const mockResponse: WhatsAppSendResponse = {
+        messaging_product: 'whatsapp',
+        messages: [{ id: providerMessageId, message_status: 'accepted' }],
+        contacts: [{ input: '+212600000001', wa_id: '212600000001' }],
+      };
+      mockSendTextMessage.mockResolvedValueOnce(mockResponse);
 
       // Act
       const result = await processWhatsAppIncoming(mockJob);
@@ -220,7 +239,7 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
       const mockJob = createMockJob();
       const apiError = new Error('WhatsApp API Error: Invalid recipient');
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockRejectedValueOnce(apiError);
+      mockSendTextMessage.mockRejectedValueOnce(apiError);
 
       // Act & Assert
       await expect(processWhatsAppIncoming(mockJob)).rejects.toThrow('WhatsApp API Error: Invalid recipient');
@@ -231,7 +250,7 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
       const mockJob = createMockJob();
       const timeoutError = new Error('ECONNABORTED: Request timeout');
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockRejectedValueOnce(timeoutError);
+      mockSendTextMessage.mockRejectedValueOnce(timeoutError);
 
       // Act & Assert
       await expect(processWhatsAppIncoming(mockJob)).rejects.toThrow('ECONNABORTED');
@@ -242,7 +261,7 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
       const mockJob = createMockJob();
       const rateLimitError = new Error('Too many requests - Rate limit exceeded');
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockRejectedValueOnce(rateLimitError);
+      mockSendTextMessage.mockRejectedValueOnce(rateLimitError);
 
       // Act & Assert
       await expect(processWhatsAppIncoming(mockJob)).rejects.toThrow('Rate limit');
@@ -253,7 +272,7 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
       const mockJob = createMockJob();
       const unexpectedError = new Error('Unexpected internal error');
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockRejectedValueOnce(unexpectedError);
+      mockSendTextMessage.mockRejectedValueOnce(unexpectedError);
 
       // Act & Assert - L'erreur doit remonter pour permettre le retry BullMQ
       await expect(processWhatsAppIncoming(mockJob)).rejects.toThrow('Unexpected internal error');
@@ -270,10 +289,9 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
       // Arrange
       const mockJob = createMockJob({ from: '+33612345678' });
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockResolvedValueOnce({
-        messages: [{ id: 'msg-fr' }],
-        contacts: [],
-      });
+      mockSendTextMessage.mockResolvedValueOnce(
+        createMockResponse('msg-fr')
+      );
 
       // Act
       await processWhatsAppIncoming(mockJob);
@@ -290,10 +308,9 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
       // Arrange - Numéro USA
       const mockJob = createMockJob({ from: '+14155551234' });
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockResolvedValueOnce({
-        messages: [{ id: 'msg-us' }],
-        contacts: [],
-      });
+      mockSendTextMessage.mockResolvedValueOnce(
+        createMockResponse('msg-us')
+      );
 
       // Act
       await processWhatsAppIncoming(mockJob);
@@ -316,13 +333,12 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
     it('should handle empty message content', async () => {
       // Arrange
       const mockJob = createMockJob({
-        message: { content: '', type: 'text', timestamp: new Date().toISOString() },
+        message: { content: '', type: 'text' },
       });
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockResolvedValueOnce({
-        messages: [{ id: 'msg-empty' }],
-        contacts: [],
-      });
+      mockSendTextMessage.mockResolvedValueOnce(
+        createMockResponse('msg-empty')
+      );
 
       // Act
       await processWhatsAppIncoming(mockJob);
@@ -338,13 +354,12 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
     it('should handle message with only whitespace', async () => {
       // Arrange
       const mockJob = createMockJob({
-        message: { content: '   \n\t  ', type: 'text', timestamp: new Date().toISOString() },
+        message: { content: '   \n\t  ', type: 'text' },
       });
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockResolvedValueOnce({
-        messages: [{ id: 'msg-whitespace' }],
-        contacts: [],
-      });
+      mockSendTextMessage.mockResolvedValueOnce(
+        createMockResponse('msg-whitespace')
+      );
 
       // Act
       await processWhatsAppIncoming(mockJob);
@@ -361,13 +376,12 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
       // Arrange
       const specialContent = '<script>alert("xss")</script> & "quotes" \'apostrophe\'';
       const mockJob = createMockJob({
-        message: { content: specialContent, type: 'text', timestamp: new Date().toISOString() },
+        message: { content: specialContent, type: 'text' },
       });
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockResolvedValueOnce({
-        messages: [{ id: 'msg-special' }],
-        contacts: [],
-      });
+      mockSendTextMessage.mockResolvedValueOnce(
+        createMockResponse('msg-special')
+      );
 
       // Act
       await processWhatsAppIncoming(mockJob);
@@ -384,13 +398,12 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
       // Arrange
       const multilineContent = 'Ligne 1\nLigne 2\nLigne 3';
       const mockJob = createMockJob({
-        message: { content: multilineContent, type: 'text', timestamp: new Date().toISOString() },
+        message: { content: multilineContent, type: 'text' },
       });
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockResolvedValueOnce({
-        messages: [{ id: 'msg-multiline' }],
-        contacts: [],
-      });
+      mockSendTextMessage.mockResolvedValueOnce(
+        createMockResponse('msg-multiline')
+      );
 
       // Act
       await processWhatsAppIncoming(mockJob);
@@ -413,11 +426,14 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
     it('should handle missing messageId in response', async () => {
       // Arrange
       const mockJob = createMockJob();
-
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockResolvedValueOnce({
-        messages: [{}], // Pas de id
+      // Test avec cast pour simuler une réponse malformée du provider
+      const responseWithoutId = {
+        messaging_product: 'whatsapp',
+        messages: [{}], // Pas de id - simule réponse malformée
         contacts: [],
-      });
+      } as unknown as WhatsAppSendResponse;
+
+      mockSendTextMessage.mockResolvedValueOnce(responseWithoutId);
 
       // Act
       const result = await processWhatsAppIncoming(mockJob);
@@ -431,10 +447,9 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
       // Arrange
       const mockJob = createMockJob();
 
-      (whatsAppProvider.sendTextMessage as jest.Mock).mockResolvedValueOnce({
-        messages: [],
-        contacts: [],
-      });
+      mockSendTextMessage.mockResolvedValueOnce(
+        createMockResponse() // Empty response
+      );
 
       // Act
       const result = await processWhatsAppIncoming(mockJob);
@@ -454,10 +469,9 @@ describe('WhatsApp Echo Worker (Boss 1)', () => {
 describe('Job Data Structure', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (whatsAppProvider.sendTextMessage as jest.Mock).mockResolvedValue({
-      messages: [{ id: 'test-id' }],
-      contacts: [],
-    });
+    mockSendTextMessage.mockResolvedValue(
+      createMockResponse('test-id')
+    );
   });
 
   it('should access all required job fields', async () => {
@@ -468,7 +482,7 @@ describe('Job Data Structure', () => {
       conversationId: 'conv-789',
       messageId: 'msg-abc',
       from: '+212661976863',
-      message: { content: 'Test', type: 'text', timestamp: '2024-01-01T00:00:00Z' },
+      message: { content: 'Test', type: 'text' },
     });
 
     // Act
