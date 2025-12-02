@@ -7,19 +7,19 @@
  * Envoi de messages et gestion des API calls.
  */
 
-import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { config } from '@/config/env';
 import { logger } from '@/lib/logger';
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import {
-  WhatsAppSendResponse,
-  WhatsAppSendResponseSchema,
-  SendTextMessageOptions,
-  WhatsAppError,
-  WhatsAppErrorCodes,
-  validateWhatsAppNumber,
-  normalizePhoneNumber,
-  maskPhoneNumber,
-} from './whatsapp.types';
+    SendTextMessageOptions,
+    WhatsAppError,
+    WhatsAppErrorCodes,
+    WhatsAppSendResponse,
+    WhatsAppSendResponseSchema,
+    maskPhoneNumber,
+    normalizePhoneNumber,
+    validateWhatsAppNumber,
+} from './types';
 
 /**
  * ================================

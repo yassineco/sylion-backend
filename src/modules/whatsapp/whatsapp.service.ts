@@ -41,16 +41,28 @@ interface OutgoingMessage {
 }
 
 interface ProcessingResult {
-  outgoingMessage: OutgoingMessage;
+  status: string;
   processingTime: number;
+  webhook: {
+    from: string;
+    to: string;
+    receivedText: string;
+  };
   conversation: {
-    id: string;
-    isNew: boolean;
+    id?: string;
+    isNew?: boolean;
+    channel?: string;
+    direction?: string;
+    from?: string;
+    to?: string;
+    demo?: boolean;
   };
   assistant: {
     id: string;
     name: string;
+    mode?: string;
   };
+  outgoingMessage: OutgoingMessage;
 }
 
 /**

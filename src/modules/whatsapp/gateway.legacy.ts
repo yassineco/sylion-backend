@@ -78,6 +78,14 @@ export function normalizeIncomingWhatsApp(
   // Prendre le premier message (MVP: un seul message par webhook)
   const message = webhookData.messages[0];
 
+  // Guard clause pour TypeScript strict
+  if (!message) {
+    throw new WhatsAppNormalizationError(
+      'Premier message du payload est undefined',
+      { messagesLength: webhookData.messages.length }
+    );
+  }
+
   // Validation des champs obligatoires
   if (!message.from) {
     throw new WhatsAppNormalizationError(
@@ -151,12 +159,22 @@ export function normalizeIncomingWhatsApp(
 
   // Construction du message normalisé
   const normalizedMessage: NormalizedIncomingMessage = {
+    // Champs Boss 1 (nouveaux)
     provider: '360dialog',
     providerMessageId: message.id,
     fromPhone,
     toPhone,
     text: messageText,
     timestamp,
+
+    // Alias compatibilité worker legacy
+    externalId: message.id,
+    from: { phoneNumber: fromPhone },
+    channelPhoneNumber: toPhone,
+
+    // Reply context (optionnel, false par défaut)
+    isReply: false,
+    replyToMessageId: undefined,
   };
 
   return normalizedMessage;

@@ -11,8 +11,8 @@ import { logger } from '@/lib/logger';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { normalizeIncomingWhatsApp, WhatsAppNormalizationError } from './gateway';
 import type { RawWhatsAppPayload } from './types';
+import { WhatsAppError } from './types';
 import { validateWebhook } from './whatsapp.gateway'; // legacy GET webhook
-import { WhatsAppError } from './whatsapp.legacy_types';
 import {
   enqueueIncomingWhatsAppJob,
   handleIncomingWhatsAppMessage,
@@ -31,7 +31,7 @@ interface WebhookValidationQuery {
 }
 
 interface WebhookPostRequest extends FastifyRequest {
-  body: unknown;
+  body: any; // le schema JSON fait la vraie validation
 }
 
 interface WebhookGetRequest extends FastifyRequest {
@@ -132,14 +132,53 @@ export async function registerWhatsAppRoutes(fastify: FastifyInstance): Promise<
   /**
    * POST /whatsapp/webhook
    * Pipeline WhatsApp Boss 1 (Gateway → Service → Queue)
+   *
+   * Format 360dialog:
+   * {
+   *   "messages": [
+   *     { "id": "...", "from": "...", "to": "...", "timestamp": "...", "type": "text", "text": { "body": "..." } }
+   *   ]
+   * }
    */
-  fastify.post<{ Body: unknown }>(
+  fastify.post<{ Body: any }>(
     '/webhook',
     {
       schema: {
         tags: ['WhatsApp'],
-        summary: 'Receive WhatsApp webhook events',
-        body: { type: 'object' },
+        summary: 'Webhook 360dialog (Boss 1)',
+        body: {
+          type: 'object',
+          properties: {
+            // Format 360dialog : tableau de messages
+            messages: {
+              type: 'array',
+              minItems: 1,
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  from: { type: 'string' },
+                  to: { type: 'string' },
+                  timestamp: { type: 'string' },
+                  type: { type: 'string' },
+                  text: {
+                    type: 'object',
+                    properties: {
+                      body: { type: 'string' },
+                    },
+                    required: ['body'],
+                    additionalProperties: true,
+                  },
+                },
+                required: ['id', 'from', 'to', 'timestamp', 'type'],
+                additionalProperties: true,
+              },
+            },
+          },
+          required: ['messages'],
+          // on laisse passer le reste du payload (metadata provider, statuses, etc.)
+          additionalProperties: true,
+        },
       },
     },
     async (request: WebhookPostRequest, reply: FastifyReply): Promise<void> => {
@@ -226,13 +265,7 @@ export async function registerWhatsAppRoutes(fastify: FastifyInstance): Promise<
         if (err instanceof SylionError) {
           const details = (err as any).details;
 
-          return sendError(
-            reply,
-            err.code,
-            err.message,
-            details,
-            requestId,
-          );
+          return sendError(reply, err.code, err.message, details, requestId);
         }
 
         // 3. Erreurs legacy WhatsApp

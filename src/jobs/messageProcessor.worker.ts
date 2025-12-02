@@ -14,12 +14,78 @@ import { assistantService } from '@/modules/assistant/assistant.service';
 import { conversationService } from '@/modules/conversation/conversation.service';
 import { messageService } from '@/modules/message/message.service';
 import { tenantService } from '@/modules/tenant/tenant.service';
-import { sendWhatsAppTextMessage } from '@/modules/whatsapp/whatsapp.provider';
-import type { NormalizedIncomingMessage } from '@/modules/whatsapp/whatsapp.types';
-import { maskPhoneNumber } from '@/modules/whatsapp/whatsapp.types';
+import type { NormalizedIncomingMessage } from '@/modules/whatsapp/types';
+import { maskPhoneNumber } from '@/modules/whatsapp/types';
+import { sendWhatsAppTextMessage, whatsAppProvider } from '@/modules/whatsapp/whatsapp.provider';
 import { Job } from 'bullmq';
 import { and, eq } from 'drizzle-orm';
 import type { JobTypes } from './index';
+
+/**
+ * ================================
+ * Echo Handler - WhatsApp Process Incoming (MVP)
+ * ================================
+ * 
+ * Handler minimal pour le pipeline echo.
+ * Reçoit le job → envoie un echo → termine.
+ * Pas de DB, pas d'IA, pas de logique conversationnelle.
+ */
+export async function processWhatsAppIncoming(
+  job: Job<JobTypes['whatsapp:process-incoming']>
+): Promise<{ success: boolean; messageId?: string }> {
+  const { tenantId, channelId, conversationId, messageId, from, message } = job.data;
+
+  logger.info('Processing WhatsApp incoming message (echo mode)', {
+    jobId: job.id,
+    tenantId,
+    channelId,
+    conversationId,
+    messageId,
+    from: maskPhoneNumber(from),
+  });
+
+  try {
+    // Construire le message echo
+    const echoText = `Echo: ${message.content}`;
+
+    // Envoyer via le provider singleton
+    const sendResult = await whatsAppProvider.sendTextMessage(from, echoText, {
+      tenantId,
+      conversationId,
+    });
+
+    logger.info('Echo message sent successfully', {
+      jobId: job.id,
+      tenantId,
+      channelId,
+      conversationId,
+      messageId,
+      providerMessageId: sendResult.messages[0]?.id,
+    });
+
+    return {
+      success: true,
+      messageId: sendResult.messages[0]?.id,
+    };
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    const errorStack = err instanceof Error ? err.stack : undefined;
+
+    logger.error('Echo message processing failed', {
+      jobId: job.id,
+      tenantId,
+      channelId,
+      conversationId,
+      messageId,
+      from: maskPhoneNumber(from),
+      error: errorMessage,
+      stack: errorStack,
+    });
+
+    // Remonter l'erreur pour que BullMQ marque le job en failed
+    throw err;
+  }
+}
 
 /**
  * ================================

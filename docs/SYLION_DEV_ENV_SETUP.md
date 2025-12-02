@@ -146,16 +146,38 @@ nginx
 Copier le code
 npm install
 7. 🗃️ Migrations Drizzle
+
+### Commandes Database
+
+| Commande | Description |
+|----------|-------------|
+| `npm run db:migrate` | Appliquer migrations |
+| `npm run db:push` | Push schéma direct |
+| `npm run db:studio` | Drizzle Studio UI |
+| `npm run db:generate` | Générer nouvelles migrations |
+
+### Connexion psql directe (dev)
+```bash
+PGPASSWORD=dev_password psql -h localhost -p 5433 -U sylion_dev -d sylion_dev
+```
+
+### Appliquer les migrations
+```bash
+npm run db:migrate
+```
+
 Générer les migrations si nécessaires :
 
-nginx
-Copier le code
-pnpm drizzle:generate
+```bash
+npm run db:generate
+```
+
 Pousser les migrations vers Postgres :
 
-perl
-Copier le code
-pnpm drizzle:push
+```bash
+npm run db:push
+```
+
 Vérifier :
 
 nginx

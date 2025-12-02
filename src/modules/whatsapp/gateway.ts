@@ -8,7 +8,7 @@
  */
 
 import type { NormalizedIncomingMessage, RawWhatsAppPayload } from './types';
-import { normalizePhoneNumber } from './whatsapp.legacy_types';
+import { normalizePhoneNumber } from './types';
 
 /**
  * Interface pour le payload 360dialog (format attendu)
@@ -144,12 +144,22 @@ export function normalizeIncomingWhatsApp(
 
   // 8. Construction du message normalisé
   const normalizedMessage: NormalizedIncomingMessage = {
+    // Champs Boss 1 (nouveaux)
     provider: '360dialog',
     providerMessageId: message.id,
     fromPhone,
     toPhone,
     text: messageText,
     timestamp,
+
+    // Alias compatibilité worker legacy
+    externalId: message.id,
+    from: { phoneNumber: fromPhone },
+    channelPhoneNumber: toPhone,
+
+    // Reply context (optionnel, false par défaut)
+    isReply: false,
+    replyToMessageId: undefined,
   };
 
   return normalizedMessage;

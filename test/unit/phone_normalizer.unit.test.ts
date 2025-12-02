@@ -9,7 +9,7 @@
  * Objectif : Empêcher la régression du bug du double préfixe "+".
  */
 
-import { normalizePhoneNumber } from '@/modules/whatsapp/whatsapp.types';
+import { normalizePhoneNumber } from '@/modules/whatsapp/types';
 
 describe('normalizePhoneNumber', () => {
   

@@ -49,6 +49,37 @@ rag/               → RAG local + Vertex options
 usage/             → quotas + consommation
 admin/             → API interne admin
 
+2.4. 🗄️ Configuration Base de Données
+
+**Démarrer les conteneurs dev :**
+```bash
+docker-compose -f docker-compose.dev.yml up -d postgres-dev redis-dev
+```
+
+**Appliquer les migrations :**
+```bash
+npm run db:migrate
+```
+
+**Seed minimal (dev uniquement) :**
+```bash
+PGPASSWORD=dev_password psql -h localhost -p 5433 -U sylion_dev -d sylion_dev << 'EOF'
+INSERT INTO tenants (id, name, slug, is_active, plan, settings) 
+VALUES ('a0000000-0000-0000-0000-000000000001', 'Dev Tenant', 'dev-tenant', true, 'free', '{}');
+
+INSERT INTO assistants (id, tenant_id, name, is_default, system_prompt, conversation_config, rag_config)
+VALUES ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'Echo Bot', true, 'Echo bot.', '{}', '{}');
+
+INSERT INTO channels (id, tenant_id, type, name, is_active, config, whatsapp_phone_number)
+VALUES ('c0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'whatsapp', 'WhatsApp Dev', true, '{}', '+212600000000');
+EOF
+```
+
+**Vérifier les tables :**
+```bash
+PGPASSWORD=dev_password psql -h localhost -p 5433 -U sylion_dev -d sylion_dev -c "\dt"
+```
+
 3. 🔥 Pipeline WhatsApp (3 minutes)
 1. Message reçu via provider
 

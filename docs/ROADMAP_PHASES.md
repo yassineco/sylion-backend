@@ -93,7 +93,14 @@ Statuts possibles :
 | **Tests non-fonctionnels** | 🔴 Not Started |
 | - Latency budget check (end-to-end sous charge normale) | 🔴 Not Started |
 
-**Phase 2.5 : 🔴 Not Started** *(Prérequis pour Phase 3 RAG)*
+**Phase 2.5 : 🟡 In Progress** *(Pipeline Boss 1 prêt, tests à écrire)*
+
+### ✅ Accomplissements Phase 2.5 (2 déc 2025)
+- ✅ Migrations DB appliquées (8 tables)
+- ✅ Seed minimal (tenant + assistant + channel)
+- ✅ Schéma webhook 360dialog corrigé
+- ✅ Pipeline Gateway → Queue → Worker fonctionnel
+- ✅ TypeScript build OK (0 erreurs)
 
 ---
 

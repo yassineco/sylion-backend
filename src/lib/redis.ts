@@ -7,39 +7,40 @@
  * Gestion des connexions, reconnexions et monitoring.
  */
 
-import Redis from 'ioredis';
+
 import { config } from '@/config/env';
+import Redis, { RedisOptions } from 'ioredis';
 import { logger } from './logger';
 
 /**
  * Configuration Redis pour l'application principale
  */
-const redisConfig = {
+const url = new URL(config.redis.url);
+
+const redisConfig: RedisOptions = {
   // URL de connexion
-  host: new URL(config.redis.url).hostname,
-  port: parseInt(new URL(config.redis.url).port || '6379'),
-  password: new URL(config.redis.url).password || undefined,
-  db: parseInt(new URL(config.redis.url).pathname?.substring(1) || '0'),
-  
-  // Configuration de reconnexion
-  retryDelayOnFailover: 1000,
-  maxRetriesPerRequest: config.redis.maxRetries,
-  retryDelayOnClusterDown: 500,
-  
-  // Timeouts
+  host: url.hostname,
+  port: parseInt(url.port || '6379', 10),
+  password: url.password || undefined,
+  db: parseInt(url.pathname.substring(1) || '0', 10),
+
+  // ✅ Réglages recommandés par BullMQ / ioredis
+  // - maxRetriesPerRequest doit être null
+  // - commandTimeout à 0 pour éviter les "Command timed out"
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+  //commandTimeout: 0,
+
+  // Timeouts & réseau
   connectTimeout: 10000,
-  commandTimeout: 5000,
   lazyConnect: true,
-  
-  // Keepalive
   keepAlive: 30000,
-  
-  // Pool de connexions
   family: 4,
-  
-  // Events et logging
+
+  // Debug
   showFriendlyErrorStack: !config.isProd,
 };
+
 
 /**
  * Instance Redis principale pour le cache

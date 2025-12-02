@@ -9,7 +9,6 @@
 
 import { logger } from '@/lib/logger';
 import { FastifyInstance } from 'fastify';
-import type { WebhookPayload } from './controllers/whatsapp.controller';
 
 // Import des routes des modules
 import { registerAssistantRoutes } from '@/modules/assistant/assistant.routes';
@@ -48,40 +47,9 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     }, { prefix: '/api/v1' });
 
     // ================================
-    // Routes WhatsApp (vertical slice)
+    // Routes WhatsApp (Boss 1 Pipeline)
     // ================================
-    await fastify.register(async function whatsappSlice(fastify: FastifyInstance) {
-      const { whatsappController } = await import('./controllers/whatsapp.controller');
-      
-      // Route principale pour le webhook
-      fastify.post<{ Body: WebhookPayload }>('/webhook', {
-        schema: {
-          tags: ['WhatsApp'],
-          summary: 'WhatsApp webhook endpoint (vertical slice)',
-          body: {
-            type: 'object',
-            required: ['from', 'to', 'text'],
-            properties: {
-              from: { type: 'string' },
-              to: { type: 'string' },
-              text: { type: 'string' },
-              timestamp: { type: 'string' },
-            },
-            additionalProperties: false,
-          },
-        },
-      }, whatsappController.handleWebhook.bind(whatsappController));
-      
-    }, { prefix: '/whatsapp' });
-    
-    // ================================
-    // Webhooks (sans versioning) - existant
-    // ================================
-    await fastify.register(async function webhooks(fastify: FastifyInstance) {
-      // Routes WhatsApp (webhook + gestion)
-      await fastify.register(registerWhatsAppRoutes, { prefix: '/whatsapp' });
-      
-    }, { prefix: '/webhooks' });
+    await fastify.register(registerWhatsAppRoutes, { prefix: '/whatsapp' });
 
     // ================================
     // Routes administratives

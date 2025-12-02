@@ -13,7 +13,7 @@
  */
 
 import { logger } from '@/lib/logger';
-import { WhatsAppError, WhatsAppErrorCodes } from './whatsapp.legacy_types';
+import { WhatsAppError, WhatsAppErrorCodes } from './types';
 
 /**
  * Valider un webhook pour la vérification initiale

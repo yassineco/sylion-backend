@@ -15,7 +15,6 @@ import { ConversationService } from '../../src/modules/conversation/conversation
 import { MessageService } from '../../src/modules/message/message.service';
 import { TenantService } from '../../src/modules/tenant/tenant.service';
 import { handleIncomingWebhook } from '../../src/modules/whatsapp/whatsapp.gateway';
-import type { WhatsAppRawPayload } from '../../src/modules/whatsapp/whatsapp.types';
 
 // Mock BullMQ jobs pour éviter le traitement asynchrone dans les tests
 jest.mock('../../src/jobs/index', () => ({
