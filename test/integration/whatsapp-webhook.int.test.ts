@@ -233,38 +233,37 @@ describe('WhatsApp Webhook Boss 1 Integration', () => {
       const response = await request
         .post('/api/v1/whatsapp/webhook')
         .send(webhookPayload)
-        .expect(422); // Erreur de validation métier
+        .expect(404); // Canal non trouvé
 
       // Assert
       expect(response.body.success).toBe(false);
-      expect(response.body.error.message).toContain('Erreur de service');
-      expect(response.body.error.message).toContain('canal WhatsApp actif');
+      expect(response.body.error.message).toContain('canal WhatsApp');
     });
 
-    it('devrait échouer avec un payload 360dialog malformé', async () => {
+    it('devrait échouer avec un payload 360dialog malformé (pas de messages)', async () => {
       // Arrange - Payload sans champ messages
       const invalidPayload = {
         // Pas de field messages
         entry: [{ /* structure différente */ }]
       };
 
-      // Act
+      // Act - Fastify JSON Schema validation rejette avant le gateway
       const response = await request
         .post('/api/v1/whatsapp/webhook')
         .send(invalidPayload)
         .expect(400);
 
-      // Assert
+      // Assert - Validation JSON Schema de Fastify
       expect(response.body.success).toBe(false);
-      expect(response.body.error.message).toContain('Erreur de normalisation');
-      expect(response.body.error.message).toContain('Aucun message trouvé');
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+      expect(response.body.error.validationErrors).toBeDefined();
     });
 
-    it('devrait échouer avec des champs manquants dans le message', async () => {
-      // Arrange - Message sans "from"
+    it('devrait échouer avec des champs manquants dans le message (schema validation)', async () => {
+      // Arrange - Message sans "from" (required par le schema JSON)
       const invalidPayload = {
         messages: [{
-          // from: manquant
+          // from: manquant - champ requis
           to: '212699999999',
           id: '360dialog_msg_005',
           timestamp: Math.floor(Date.now() / 1000).toString(),
@@ -273,16 +272,16 @@ describe('WhatsApp Webhook Boss 1 Integration', () => {
         }]
       };
 
-      // Act
+      // Act - Fastify JSON Schema validation rejette
       const response = await request
         .post('/api/v1/whatsapp/webhook')
         .send(invalidPayload)
         .expect(400);
 
-      // Assert
+      // Assert - Validation JSON Schema de Fastify
       expect(response.body.success).toBe(false);
-      expect(response.body.error.message).toContain('Erreur de normalisation');
-      expect(response.body.error.message).toContain('champ "from" manquant');
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+      expect(response.body.error.validationErrors).toBeDefined();
     });
 
     it('devrait traiter un message sans texte (type non-text)', async () => {

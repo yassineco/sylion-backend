@@ -53,6 +53,31 @@ export function createApp(): FastifyInstance {
       requestId,
     });
 
+    // Gestion des erreurs de validation (JSON Schema)
+    if (error.validation) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Validation error',
+          validationErrors: error.validation,
+          requestId,
+        },
+      });
+    }
+
+    // Erreur avec statusCode spécifique
+    if (error.statusCode && error.statusCode !== 500) {
+      return reply.status(error.statusCode).send({
+        success: false,
+        error: {
+          code: 'BAD_REQUEST',
+          message: error.message,
+          requestId,
+        },
+      });
+    }
+
     return reply.status(500).send({
       success: false,
       error: {

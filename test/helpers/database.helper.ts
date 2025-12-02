@@ -48,6 +48,13 @@ export class DatabaseTestHelper {
   }
 
   /**
+   * Alias for cleanup() for backward compatibility
+   */
+  static async cleanDatabase(): Promise<void> {
+    return this.cleanup();
+  }
+
+  /**
    * Create a test tenant with minimal required data
    */
   static async createTestTenant(suffix: string = 'default') {

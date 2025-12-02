@@ -44,12 +44,10 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
       // Routes pour la gestion des messages
       await fastify.register(registerMessageRoutes, { prefix: '/messages' });
       
+      // Routes WhatsApp (Boss 1 Pipeline)
+      await fastify.register(registerWhatsAppRoutes, { prefix: '/whatsapp' });
+      
     }, { prefix: '/api/v1' });
-
-    // ================================
-    // Routes WhatsApp (Boss 1 Pipeline)
-    // ================================
-    await fastify.register(registerWhatsAppRoutes, { prefix: '/whatsapp' });
 
     // ================================
     // Routes administratives
