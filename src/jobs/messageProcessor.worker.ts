@@ -18,7 +18,7 @@ import { formatContextForPrompt, ragService } from '@/modules/rag';
 import { tenantService } from '@/modules/tenant/tenant.service';
 import type { NormalizedIncomingMessage } from '@/modules/whatsapp/types';
 import { maskPhoneNumber } from '@/modules/whatsapp/types';
-import { sendWhatsAppTextMessage, whatsAppProvider } from '@/modules/whatsapp/whatsapp.provider';
+import { getWhatsAppProvider, sendWhatsAppMessage } from '@/modules/whatsapp/whatsapp.provider.factory';
 import { Job } from 'bullmq';
 import { and, eq } from 'drizzle-orm';
 import type { JobTypes } from './index';
@@ -37,7 +37,7 @@ export async function processWhatsAppIncoming(
 ): Promise<{ success: boolean; messageId?: string }> {
   const { tenantId, channelId, conversationId, messageId, from, message } = job.data;
 
-  logger.info('Processing WhatsApp incoming message (echo mode)', {
+  logger.info('[Worker] Processing WhatsApp incoming message (echo mode)', {
     jobId: job.id,
     tenantId,
     channelId,
@@ -46,17 +46,41 @@ export async function processWhatsAppIncoming(
     from: maskPhoneNumber(from),
   });
 
+  // Defensive validation
+  if (!tenantId || !channelId || !from) {
+    logger.error('[Worker] Missing required job data fields', {
+      jobId: job.id,
+      hasTenantId: !!tenantId,
+      hasChannelId: !!channelId,
+      hasFrom: !!from,
+    });
+    throw new Error('Missing required job data: tenantId, channelId, or from');
+  }
+
+  if (!message?.content) {
+    logger.warn('[Worker] Message content is empty or undefined', {
+      jobId: job.id,
+      messageId,
+    });
+  }
+
   try {
     // Construire le message echo
-    const echoText = `Echo: ${message.content}`;
+    const echoText = `Echo: ${message?.content || '[empty message]'}`;
 
-    // Envoyer via le provider singleton
-    const sendResult = await whatsAppProvider.sendTextMessage(from, echoText, {
+    logger.debug('[Worker] Preparing echo response', {
+      jobId: job.id,
+      echoTextLength: echoText.length,
+    });
+
+    // Envoyer via le provider (mock ou réel selon l'environnement)
+    const provider = getWhatsAppProvider();
+    const sendResult = await provider.sendTextMessage(from, echoText, {
       tenantId,
       conversationId,
     });
 
-    logger.info('Echo message sent successfully', {
+    logger.info('[Worker] Echo message sent successfully', {
       jobId: job.id,
       tenantId,
       channelId,
@@ -73,7 +97,7 @@ export async function processWhatsAppIncoming(
     const errorMessage = err instanceof Error ? err.message : String(err);
     const errorStack = err instanceof Error ? err.stack : undefined;
 
-    logger.error('Echo message processing failed', {
+    logger.error('[Worker] Echo message processing failed', {
       jobId: job.id,
       tenantId,
       channelId,
@@ -575,7 +599,7 @@ async function sendReplyToWhatsApp(
   reply: string
 ): Promise<void> {
   try {
-    await sendWhatsAppTextMessage(
+    await sendWhatsAppMessage(
       context.message.from.phoneNumber,
       reply,
       {

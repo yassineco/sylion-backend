@@ -7,6 +7,7 @@
  * Fonction pure sans DB, sans queue, sans Fastify.
  */
 
+import { logger } from '@/lib/logger';
 import type { NormalizedIncomingMessage, RawWhatsAppPayload } from './types';
 import { normalizePhoneNumber } from './types';
 
@@ -48,8 +49,14 @@ export class WhatsAppNormalizationError extends Error {
 export function normalizeIncomingWhatsApp(
   payload: RawWhatsAppPayload,
 ): NormalizedIncomingMessage {
+  logger.debug('[Gateway] Starting message normalization', {
+    provider: payload.provider,
+    hasBody: !!payload.body,
+  });
+
   // 1. Vérification du provider supporté
   if (payload.provider !== '360dialog') {
+    logger.warn('[Gateway] Unsupported provider rejected', { provider: payload.provider });
     throw new WhatsAppNormalizationError(
       `Provider non supporté: ${payload.provider}. Seul '360dialog' est supporté pour le MVP.`,
       { provider: payload.provider },
@@ -161,6 +168,14 @@ export function normalizeIncomingWhatsApp(
     isReply: false,
     replyToMessageId: undefined,
   };
+
+  logger.info('[Gateway] Message normalized successfully', {
+    providerMessageId: normalizedMessage.providerMessageId,
+    fromPhone: normalizedMessage.fromPhone.replace(/\d{6}$/, '******'),
+    toPhone: normalizedMessage.toPhone.replace(/\d{6}$/, '******'),
+    textLength: normalizedMessage.text.length,
+    timestamp: normalizedMessage.timestamp.toISOString(),
+  });
 
   return normalizedMessage;
 }
