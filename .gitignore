@@ -127,6 +127,11 @@ pnpm-lock.yaml
 *.old
 
 # ================================
+# Secrets (CRITICAL - NEVER COMMIT)
+# ================================
+.secrets/
+
+# ================================
 # Documentation Build
 # ================================
 docs/build/

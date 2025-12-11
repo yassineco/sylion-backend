@@ -10,8 +10,8 @@
  * Toutes les valeurs sensibles doivent être dans .env.local (non versionné).
  */
 
-import { z } from 'zod';
 import dotenv from 'dotenv';
+import { z } from 'zod';
 
 // Load environment variables
 dotenv.config({ path: '.env.local' });
@@ -49,7 +49,7 @@ const envSchema = z.object({
   // Google Cloud Platform
   // ================================
   GCP_PROJECT_ID: z.string().min(1, 'GCP_PROJECT_ID is required'),
-  GCP_SERVICE_ACCOUNT_KEY: z.string().min(100, 'GCP_SERVICE_ACCOUNT_KEY must be a valid JSON string'),
+  GOOGLE_APPLICATION_CREDENTIALS: z.string().min(1, 'GOOGLE_APPLICATION_CREDENTIALS path is required'),
   GCS_BUCKET_NAME: z.string().min(3, 'GCS_BUCKET_NAME is required'),
   
   // ================================
@@ -181,7 +181,7 @@ export const config = {
    */
   gcp: {
     projectId: env.GCP_PROJECT_ID,
-    serviceAccountKey: env.GCP_SERVICE_ACCOUNT_KEY,
+    credentialsPath: env.GOOGLE_APPLICATION_CREDENTIALS,
     bucketName: env.GCS_BUCKET_NAME,
   },
   

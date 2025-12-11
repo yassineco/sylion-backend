@@ -6,11 +6,14 @@
  * Service pour la génération d'embeddings via Vertex AI.
  * Utilise le modèle text-embedding-004 (768 dimensions).
  * 
+ * Authentification via Application Default Credentials (ADC).
+ * 
  * @module lib/embedding
  */
 
 import { config } from '@/config/env';
 import { logger } from '@/lib/logger';
+import { GoogleAuth } from 'google-auth-library';
 
 /**
  * Configuration du service d'embeddings
@@ -61,122 +64,52 @@ export class EmbeddingError extends Error {
 
 /**
  * Client pour le service d'embeddings Vertex AI
+ * Utilise Application Default Credentials (ADC) pour l'authentification
  */
 class EmbeddingService {
   private apiEndpoint: string;
-  private accessToken: string | null = null;
-  private tokenExpiry: number = 0;
+  private auth: GoogleAuth;
 
   constructor() {
     const projectId = config.gcp.projectId;
     const location = config.vertex.location;
+    
     this.apiEndpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${EMBEDDING_CONFIG.model}:predict`;
+    
+    // Initialiser GoogleAuth avec ADC
+    this.auth = new GoogleAuth({
+      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+    });
+    
+    logger.info('[EmbeddingService] Initialized with ADC', {
+      projectId,
+      location,
+      model: EMBEDDING_CONFIG.model,
+    });
   }
 
   /**
-   * Obtenir ou rafraîchir le token d'accès GCP
+   * Obtenir un access token via ADC
    */
   private async getAccessToken(): Promise<string> {
-    const now = Date.now();
-    
-    // Réutiliser le token s'il est encore valide (avec marge de 5 min)
-    if (this.accessToken && this.tokenExpiry > now + 300000) {
-      return this.accessToken;
-    }
-
     try {
-      // Parse la clé de service account
-      const serviceAccountKey = JSON.parse(config.gcp.serviceAccountKey);
+      const client = await this.auth.getClient();
+      const tokenResponse = await client.getAccessToken();
       
-      // Créer le JWT pour l'authentification
-      const jwt = await this.createJWT(serviceAccountKey);
-      
-      // Échanger le JWT contre un access token
-      const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-          assertion: jwt,
-        }),
-      });
-
-      if (!tokenResponse.ok) {
-        const error = await tokenResponse.text();
+      if (!tokenResponse.token) {
         throw new EmbeddingError(
-          'Failed to get access token',
-          'AUTH_ERROR',
-          { error }
+          'Failed to get access token from ADC',
+          'AUTH_ERROR'
         );
       }
-
-      const tokenData = await tokenResponse.json();
-      this.accessToken = tokenData.access_token as string;
-      this.tokenExpiry = now + (tokenData.expires_in * 1000);
-
-      return this.accessToken!;
+      
+      return tokenResponse.token;
     } catch (error) {
-      logger.error('Error getting GCP access token', {
+      logger.error('[EmbeddingService] Error getting access token via ADC', {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
-  }
-
-  /**
-   * Créer un JWT pour l'authentification GCP
-   */
-  private async createJWT(serviceAccountKey: {
-    client_email: string;
-    private_key: string;
-  }): Promise<string> {
-    const header = {
-      alg: 'RS256',
-      typ: 'JWT',
-    };
-
-    const now = Math.floor(Date.now() / 1000);
-    const payload = {
-      iss: serviceAccountKey.client_email,
-      scope: 'https://www.googleapis.com/auth/cloud-platform',
-      aud: 'https://oauth2.googleapis.com/token',
-      iat: now,
-      exp: now + 3600, // 1 heure
-    };
-
-    // Encoder header et payload
-    const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
-    const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
-    const signatureInput = `${encodedHeader}.${encodedPayload}`;
-
-    // Signer avec la clé privée
-    const signature = await this.signRS256(
-      signatureInput,
-      serviceAccountKey.private_key
-    );
-
-    return `${signatureInput}.${signature}`;
-  }
-
-  /**
-   * Encoder en base64url
-   */
-  private base64UrlEncode(str: string): string {
-    const base64 = Buffer.from(str).toString('base64');
-    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-  }
-
-  /**
-   * Signer avec RS256
-   */
-  private async signRS256(data: string, privateKey: string): Promise<string> {
-    const crypto = await import('crypto');
-    const sign = crypto.createSign('RSA-SHA256');
-    sign.update(data);
-    const signature = sign.sign(privateKey, 'base64');
-    return signature.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
   }
 
   /**
@@ -201,7 +134,7 @@ class EmbeddingService {
     // Tronquer si trop long
     const truncatedText = text.slice(0, EMBEDDING_CONFIG.maxTextLength);
     if (text.length > EMBEDDING_CONFIG.maxTextLength) {
-      logger.warn('Text truncated for embedding', {
+      logger.warn('[EmbeddingService] Text truncated for embedding', {
         originalLength: text.length,
         truncatedLength: truncatedText.length,
       });
@@ -261,7 +194,7 @@ class EmbeddingService {
           task_type: taskType,
         }));
 
-        logger.debug('Generating batch embeddings', {
+        logger.debug('[EmbeddingService] Generating batch embeddings', {
           batchIndex,
           batchSize: batch.length,
           totalBatches: batches.length,
@@ -296,13 +229,13 @@ class EmbeddingService {
           }
         }
 
-        logger.debug('Batch embeddings generated', {
+        logger.debug('[EmbeddingService] Batch embeddings generated', {
           batchIndex,
           embeddingsGenerated: data.predictions.length,
         });
 
       } catch (error) {
-        logger.error('Error generating batch embeddings', {
+        logger.error('[EmbeddingService] Error generating batch embeddings', {
           batchIndex,
           batchSize: batch.length,
           error: error instanceof Error ? error.message : String(error),
@@ -330,6 +263,25 @@ class EmbeddingService {
       return embedding.length === EMBEDDING_CONFIG.dimensions;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Obtenir les informations du service account (pour diagnostic)
+   */
+  async getServiceAccountInfo(): Promise<{ email: string; projectId: string } | null> {
+    try {
+      const credentials = await this.auth.getCredentials();
+      
+      return {
+        email: credentials.client_email || 'unknown',
+        projectId: await this.auth.getProjectId() || config.gcp.projectId,
+      };
+    } catch (error) {
+      logger.error('[EmbeddingService] Error getting service account info', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
   }
 }
