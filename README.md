@@ -1,370 +1,148 @@
-# 🦁 Sylion Backend
+### Déploiement VPS Production (derrière Nginx)
 
-Backend principal de la plateforme **SylionAI** - Architecture multi-tenant WhatsApp-first avec IA et RAG.
-
-## 🚀 Démarrage Rapide
-
-### Prérequis
-
-- **Node.js** 20+
-- **Docker** & **Docker Compose** v2
-- **PostgreSQL** avec extension `pgvector`
-- **Redis** pour le cache et les queues
-
-### Installation
-
-1. **Cloner le projet**
-   ```bash
-   git clone https://github.com/SylionTech/sylion-backend.git
-   cd sylion-backend
-   ```
-
-2. **Démarrer les services Docker**
-   ```bash
-   docker compose -f docker-compose.dev.yml up -d
-   ```
-
-3. **Installer les dépendances**
-   ```bash
-   npm install
-   ```
-
-4. **Configuration environnement**
-   ```bash
-   cp .env.example .env.local
-   # Éditer .env.local si nécessaire (valeurs par défaut OK pour dev)
-   ```
-
-5. **Lancer les migrations**
-   ```bash
-   npm run db:migrate
-   ```
-
-6. **Démarrer le serveur**
-   ```bash
-   npm run dev
-   ```
-
-Le serveur sera accessible sur `http://localhost:3000`
-
-### Vérification
-
-- **Health Check** : `GET http://localhost:3000/health`
-- **Swagger Documentation** (dev) : `http://localhost:3000/docs`
-- **Admin Stats** : `GET http://localhost:3000/admin/queues/stats`
+**Architecture de référence**  
+Nginx tourne sur le **host du VPS (hors Docker)** et proxifie les requêtes HTTPS vers le backend exposé **uniquement en loopback** (`127.0.0.1:8000`).
 
 ---
 
-## 🎮 Scripts Démo WhatsApp
+#### 1. Prérequis
 
-Pour préparer une démonstration WhatsApp :
-
-```bash
-# 1. Créer un tenant de démo
-npm run create-demo-tenant
-
-# 2. Créer l'assistant IA (utiliser le tenantId affiché)
-npm run create-demo-assistant <tenantId>
-
-# 3. Valider que tout fonctionne
-npm run test:demo
-```
-
-### Que valide `npm run test:demo` ?
-
-| Test | Endpoint | Critère de succès |
-|------|----------|-------------------|
-| Health Check | `GET /health` | HTTP 200 |
-| Webhook WhatsApp | `POST /api/v1/whatsapp/webhook` | HTTP 200 + messageId |
-
-> **Note** : Le test `/health` considère HTTP 200 comme succès, même si le champ `status` retourne `healthy` ou `degraded`.
+- VPS avec Docker et Docker Compose installés
+- Nginx installé sur le host (hors Docker)
+- Certificat SSL configuré (Let’s Encrypt ou équivalent)
 
 ---
 
-## 📋 Variables d'Environnement Requises
-
-Créez un fichier `.env.local` avec les variables suivantes :
-
-```env
-# Application
-NODE_ENV=development
-PORT=3000
-HOST=0.0.0.0
-
-# Database (Supabase PostgreSQL)
-DATABASE_URL=postgresql://user:password@localhost:5432/sylion_dev
-
-# Redis
-REDIS_URL=redis://localhost:6379
-
-# WhatsApp API (360dialog)
-WHATSAPP_API_KEY=your_360dialog_api_key
-WHATSAPP_VERIFY_TOKEN=your_webhook_verify_token
-
-# Google Cloud Platform
-GCP_PROJECT_ID=your_gcp_project_id
-GCP_SERVICE_ACCOUNT_KEY=your_service_account_json
-GCS_BUCKET_NAME=your_storage_bucket
-
-# Vertex AI
-VERTEX_AI_LOCATION=us-central1
-VERTEX_AI_MODEL=gemini-1.5-pro
-VERTEX_EMBEDDING_MODEL=text-embedding-004
-
-# Authentication
-JWT_SECRET=your_super_secret_jwt_key_minimum_32_characters
-
-# Features
-ENABLE_SWAGGER=true
-ENABLE_CORS=true
-ENABLE_HELMET=true
-LOG_LEVEL=info
-LOG_PRETTY=true
-```
-
-## 🏗️ Architecture
-
-```
-src/
-├── app/          # Serveur Fastify, routes, middlewares
-├── modules/      # Logique métier (tenant, channel, assistant...)
-├── lib/          # Utilitaires (logger, redis, http)
-├── db/           # Drizzle ORM, migrations, schémas
-├── jobs/         # Workers BullMQ
-└── config/       # Configuration environnement
-```
-
-### Principes d'Architecture
-
-- **Domain-Driven Design** léger
-- **Multi-tenant** avec isolation des données
-- **API versionnée** (`/api/v1/`)
-- **Jobs asynchrones** avec BullMQ
-- **Cache Redis** pour les performances
-- **RAG local** avec pgvector
-- **Logging structuré** avec Pino
-- **Validation stricte** avec Zod
-
-## 📡 API Endpoints
-
-### Core Resources
-
-- **Tenants** : `GET|POST|PUT|DELETE /api/v1/tenants`
-- **Channels** : `GET|POST|PUT|DELETE /api/v1/channels`
-- **Assistants** : `GET|POST|PUT|DELETE /api/v1/assistants`
-- **Conversations** : `GET|POST|PUT|DELETE /api/v1/conversations`
-- **Messages** : `GET|POST|PUT|DELETE /api/v1/messages`
-
-### Webhooks
-
-- **WhatsApp** : `POST /webhooks/whatsapp/message`
-- **Verification** : `GET /webhooks/whatsapp/verify`
-
-### Admin
-
-- **System Info** : `GET /admin/system/info`
-- **Queue Stats** : `GET /admin/queues/stats`
-- **Health Check** : `GET /health`
-
-## 🔧 Scripts Disponibles
+#### 2. Déploiement
 
 ```bash
-# Développement
-npm run dev              # Serveur avec hot-reload
-npm run build            # Compilation TypeScript
-npm run start            # Serveur production
+# 1. Créer le fichier d’environnement production à partir du template
+cp .env.prod.example .env.prod
 
-# Qualité du code
-npm run lint             # Vérification ESLint
-npm run lint:fix         # Correction automatique
-npm run format           # Formatage Prettier
-npm run type-check       # Vérification TypeScript
+# 2. Renseigner les secrets OBLIGATOIRES dans .env.prod :
+#    - POSTGRES_PASSWORD   (ex: openssl rand -base64 32)
+#    - REDIS_PASSWORD      (ex: openssl rand -base64 32)
+#    - JWT_SECRET          (ex: openssl rand -base64 64)
+#    - WHATSAPP_API_KEY    (depuis le dashboard 360dialog)
+#    - WHATSAPP_VERIFY_TOKEN
+#    - WHATSAPP_PHONE_NUMBER_ID
 
-# Base de données
-npm run db:generate      # Générer migration Drizzle
-npm run db:push          # Push schema vers DB
-npm run db:migrate       # Exécuter migrations
-npm run db:studio        # Interface graphique Drizzle
-
-# Docker
-npm run docker:dev       # Services de développement
-npm run docker:prod      # Services de production
-
-# Tests
-npm run test             # Tests Jest
-npm run test:watch       # Tests en mode watch
-
-# Utilitaires
-npm run health           # Test health endpoint
+# 3. Lancer les services
+ENV_FILE=.env.prod docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 ```
 
-## 🔐 Sécurité
-
-### Règles Strictes
-
-- ❌ **Jamais de secrets dans le code**
-- ❌ **Jamais de commit de `.env`**
-- ❌ **Jamais de logs avec données sensibles**
-- ✅ **Validation Zod sur toutes les entrées**
-- ✅ **Masquage des numéros de téléphone**
-- ✅ **Chiffrement des clés API**
-- ✅ **Rate limiting actif**
-
-### Headers de Sécurité
-
-Le serveur configure automatiquement :
-- `Helmet.js` pour les headers de sécurité
-- `CORS` configuré selon l'environnement
-- `Rate Limiting` par IP
-- `Request ID` unique pour le tracking
-
-## 🗄️ Base de Données
-
-### Schéma Principal
-
-- **tenants** : Configuration multi-tenant
-- **channels** : Canaux de communication (WhatsApp, Web, Voice)
-- **assistants** : Configuration des assistants IA
-- **conversations** : Sessions de chat
-- **messages** : Messages individuels
-- **documents** : Stockage RAG
-- **document_chunks** : Embeddings pour recherche
-- **quota_usage** : Suivi d'usage détaillé
-
-### Extensions Requises
-
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;        -- pgvector pour RAG
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";   -- UUID generation
-CREATE EXTENSION IF NOT EXISTS pg_trgm;       -- Full-text search
-```
-
-## 🚀 Workers & Jobs
-
-### Types de Jobs
-
-- **WhatsApp** : `whatsapp:send-message`, `whatsapp:process-incoming`
-- **IA** : `ai:process-message`, `ai:generate-response`
-- **RAG** : `rag:index-document`, `rag:search-similar`
-- **Système** : `system:cleanup-conversations`, `system:update-quotas`
-
-### Queues Configurées
-
-- **whatsapp** : Messages temps réel (priorité élevée)
-- **ai** : Traitement IA avec rate limiting
-- **rag** : Indexation de documents
-- **system** : Tâches de maintenance
-
-## 📊 Monitoring & Logs
-
-### Logs Structurés (Pino)
-
-```typescript
-logger.info('Message processed', {
-  tenantId: 'xxx',
-  conversationId: 'xxx',
-  phoneNumber: '+2126xxxxxxx', // Masqué automatiquement
-  aiModel: 'gemini-1.5-pro',
-  tokensUsed: 150,
-  duration: 1200
-});
-```
-
-### Métriques Disponibles
-
-- Statistiques des queues en temps réel
-- Usage par tenant (messages, IA, stockage)
-- Performance par endpoint
-- Santé des services (DB, Redis, Workers)
-
-## 🧪 Tests
+Vérifications usuelles :
 
 ```bash
-npm run test                # Tous les tests
-npm run test:watch         # Mode watch
-npm run test:coverage      # Avec coverage
+ENV_FILE=.env.prod docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+ENV_FILE=.env.prod docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f backend
 ```
 
-### Structure des Tests
-
-```
-tests/
-├── unit/           # Tests unitaires des services
-├── integration/    # Tests d'intégration
-├── e2e/           # Tests end-to-end
-└── fixtures/      # Données de test
-```
-
-## 🚀 Déploiement
-
-### Docker Production
+Arrêt des services :
 
 ```bash
-# Build et déploiement
-docker-compose up -d
-
-# Logs en temps réel
-docker-compose logs -f api
-
-# Scaling des workers
-docker-compose up -d --scale api=3
+ENV_FILE=.env.prod docker compose --env-file .env.prod -f docker-compose.prod.yml down
 ```
 
-### Variables de Production
-
-```env
-NODE_ENV=production
-DATABASE_URL=postgresql://prod_user:***@prod_host:5432/sylion_prod
-REDIS_URL=redis://prod_redis:6379
-LOG_LEVEL=warn
-ENABLE_SWAGGER=false
-```
-
-## 📚 Documentation
-
-### Règles d'Ingénierie
-
-Voir `docs/ENGINEERING_RULES.md` pour les standards techniques complets.
-
-### Sécurité
-
-Voir `docs/SECURITY_GUIDE.md` pour les règles de sécurité strictes.
-
-### Contributions
-
-Voir `docs/CONTRIBUTING.md` pour le workflow Git et les standards qualité.
-
-## 🆘 Support & Troubleshooting
-
-### Problèmes Courants
-
-1. **Erreur de connexion DB**
-   ```bash
-   npm run docker:dev  # Vérifier que PostgreSQL est lancé
-   ```
-
-2. **Workers ne démarrent pas**
-   ```bash
-   docker-compose logs redis-dev  # Vérifier Redis
-   ```
-
-3. **Migrations échouent**
-   ```bash
-   npm run db:push  # Push du schéma direct
-   ```
-
-### Logs de Debug
-
-```bash
-LOG_LEVEL=debug npm run dev
-```
-
-## 📞 Contact
-
-- **Email** : dev@sylion.tech
-- **Documentation** : [docs.sylion.tech](https://docs.sylion.tech)
-- **Issues** : [GitHub Issues](https://github.com/SylionTech/sylion-backend/issues)
+> Important : si un secret obligatoire est manquant, `docker compose` refusera de démarrer avec un message d’erreur explicite.
 
 ---
 
-**SylionTech** - Plateforme IA multi-tenant pour l'automatisation WhatsApp 🦁
+#### 3. Architecture réseau (résumé exact)
+
+- Nginx écoute sur le host du VPS (ports 80/443).
+- Le conteneur `backend` écoute sur le port `8000` **à l’intérieur de Docker**.
+- Docker publie ce port **uniquement en loopback sur le host** :
+  `127.0.0.1:8000 → backend:8000`.
+- PostgreSQL et Redis restent accessibles **uniquement via le réseau Docker interne** (`sylion-network`).
+
+---
+
+#### 4. Configuration `docker-compose.prod.yml`
+
+Pour exposer le backend en loopback sur le host :
+
+```yaml
+backend:
+  ports:
+    - "127.0.0.1:8000:8000"
+```
+
+> ℹ️ `expose:` est optionnel lorsque `ports:` est défini.
+
+---
+
+#### 5. Configuration Nginx (host)
+
+Exemple minimal (fichier : `/etc/nginx/sites-available/api.sylion.tech`) :
+
+```nginx
+server {
+    listen 80;
+    server_name api.sylion.tech;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name api.sylion.tech;
+
+    ssl_certificate     /etc/letsencrypt/live/api.sylion.tech/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.sylion.tech/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /health {
+        proxy_pass http://127.0.0.1:8000/health;
+        access_log off;
+    }
+}
+```
+
+---
+
+#### 6. Tests de validation (local / CI uniquement)
+
+> ⚠️ **À NE PAS exécuter sur le VPS de production**  
+> Cette section est réservée à la validation syntaxique en local ou en CI.
+
+```bash
+# Créer un fichier temporaire avec des valeurs de test
+cat > .env.tmp << 'EOF'
+POSTGRES_PASSWORD=test
+REDIS_PASSWORD=test
+JWT_SECRET=test_jwt_secret_minimum_32_chars
+WHATSAPP_API_KEY=test_api_key
+WHATSAPP_VERIFY_TOKEN=test_verify_token
+WHATSAPP_PHONE_NUMBER_ID=test_phone_id
+EOF
+
+# Valider uniquement la syntaxe YAML et l’interpolation des variables
+ENV_FILE=.env.tmp docker compose --env-file .env.tmp -f docker-compose.prod.yml config --quiet   && echo "✅ YAML valid"
+
+# Nettoyage
+rm -f .env.tmp
+```
+
+Objectif : vérifier que le fichier `docker-compose.prod.yml` est syntaxiquement correct **sans démarrer de conteneurs**.
+
+---
+
+#### ✅ Résumé des modifications
+
+| Élément | Avant | Après |
+|------|------|------|
+| Architecture | Ambiguë (Docker vs host) | **Nginx sur host uniquement** |
+| Loopback | Mal interprété | Publication loopback via `ports:` |
+| Snippet YAML | Parasité / non valide | Minimal et valide |
+| Configuration Nginx | DNS Docker interne | `127.0.0.1:8000` explicite |
+| Tests CI | Mélangés avec prod | Section dédiée + cleanup |
+| Lisibilité | Moyenne | **Runbook production clair** |
