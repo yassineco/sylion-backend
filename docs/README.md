@@ -67,6 +67,19 @@ src/
 
 ---
 
+# 📐 Décisions d'Architecture (ADR)
+
+Les choix d'architecture significatifs sont documentés dans des **Architecture Decision Records** :
+
+→ **[architecture/adr/README.md](architecture/adr/README.md)**
+
+| # | Décision | Statut |
+|---|----------|--------|
+| [0001](architecture/adr/0001-nginx-on-host-loopback-backend.md) | Nginx sur le host, backend en loopback | Accepted |
+| [0002](architecture/adr/0002-compose-prod-envfile-contract.md) | Docker Compose prod + ENV_FILE comme contrat | Accepted |
+
+---
+
 # 🔧 4. Installation & Lancement
 
 ## Prérequis
@@ -144,9 +157,37 @@ Réponse WhatsApp
 
 # 📚 6. Documentation interne
 
-- [Règles d’ingénierie](./docs/ENGINEERING_RULES.md)  
-- [Guide de sécurité](./docs/SECURITY_GUIDE.md)  
-- [Learning Log](./docs/LEARNING_LOG.md)
+### 🏗️ Architecture
+- [Règles d'architecture](./architecture/ARCHITECTURE_RULES.md)
+- [Contexte projet](./architecture/PROJECT_CONTEXT.md)
+- [Plan RAG v1](./architecture/RAG_v1_PLAN.md)
+- [Architecture Decision Records](./architecture/adr/)
+
+### 🔧 Opérations
+- [Checklist Go-Live](./operations/GO_LIVE_CHECKLIST.md)
+- [Incident Runbook](./operations/INCIDENT_RUNBOOK.md)
+- [Backup/Restore](./operations/BACKUP_RESTORE.md)
+- [Guide de sécurité](./operations/SECURITY_GUIDE.md)
+
+### 📐 Standards & Guides
+- [Règles d'ingénierie](./standards/ENGINEERING_RULES.md)
+- [Style Guide](./standards/ENGINEERING_STYLE_GUIDE.md)
+- [Conventions de nommage](./standards/NAMING_CONVENTIONS.md)
+- [Stratégie de tests](./standards/TEST_STRATEGY.md)
+
+### 🚀 Onboarding
+- [Setup dev environment](./onboarding/SYLION_DEV_ENV_SETUP.md)
+- [Backend onboarding](./onboarding/BACKEND_ONBOARDING.md)
+
+### 🎨 Admin Console
+- [Components](./admin-console/COMPONENTS.md)
+- [Flows](./admin-console/FLOWS.md)
+- [UI Design System](./admin-console/UI_DESIGN_SYSTEM.md)
+
+### 📖 Références API
+- [API Reference](./API_REFERENCE.md)
+- [API Use Cases](./API_USE_CASES_EXAMPLES.md)
+- [Contributing](./CONTRIBUTING.md)
 
 ---
 
