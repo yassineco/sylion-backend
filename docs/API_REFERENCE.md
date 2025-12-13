@@ -268,14 +268,83 @@ Exemple réponse
   }
 }
 
-12. 🧪 Health & Internal API
-12.1. GET /health
+# 12. 🧪 Health & Internal API
 
-Réponse simple :
+## 12.1. GET /health
 
-{ "status": "ok" }
+Endpoint de vérification de l'état du backend.
 
-12.2. GET /metrics
+### Réponse (HTTP 200)
+
+```json
+{
+  "status": "healthy",
+  "demoMode": true,
+  "timestamp": "2025-12-13T10:30:00.000Z",
+  "version": "0.1.0",
+  "uptime": 3600,
+  "environment": "development",
+  "services": {
+    "database": "connected",
+    "redis": "connected",
+    "whatsappProvider": "360dialog"
+  },
+  "queues": {}
+}
+```
+
+### Champs retournés
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `status` | string | `healthy` ou `degraded` |
+| `demoMode` | boolean | `true` si mode démo actif (fallback IA) |
+| `services.database` | string | `connected` ou `disconnected` |
+| `services.redis` | string | `connected` ou `disconnected` |
+| `services.whatsappProvider` | string | Provider actif (`360dialog`, `mock`) |
+
+> **Note** : HTTP 200 = service opérationnel, même si `status` = `degraded`.
+
+---
+
+## 12.2. POST /api/v1/whatsapp/webhook
+
+Réception des messages WhatsApp via 360dialog.
+
+### Payload (exemple anonymisé)
+
+```json
+{
+  "messages": [
+    {
+      "id": "wamid.HBgMxxxxxxx",
+      "from": "212600000000",
+      "to": "212600000001",
+      "timestamp": "1702468800",
+      "type": "text",
+      "text": {
+        "body": "Bonjour, quels sont vos tarifs ?"
+      }
+    }
+  ]
+}
+```
+
+### Réponse (HTTP 200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "messageId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "status": "queued"
+  }
+}
+```
+
+---
+
+## 12.3. GET /metrics
 
 Exposé Prometheus (metrics serveurs + queues).
 

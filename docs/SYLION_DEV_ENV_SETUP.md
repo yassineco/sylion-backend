@@ -414,9 +414,9 @@ tester /whatsapp/webhook
 ouvrir Drizzle Studio
 
 17. 🦁 Conclusion
-Avec ce document, n’importe quel développeur (ou agent IA) peut :
+Avec ce document, n'importe quel développeur (ou agent IA) peut :
 
-installer l’environnement
+installer l'environnement
 
 comprendre la structure
 
@@ -426,6 +426,49 @@ exécuter les tests
 
 contribuer proprement
 
-respecter l’architecture SYLION
+respecter l'architecture SYLION
 
-C’est un vrai document “Ready-to-Work”.
+C'est un vrai document "Ready-to-Work".
+
+---
+
+# 18. 📌 Addendum - Configuration Dev 2025
+
+> **Mise à jour Décembre 2025** : Cette section remplace les sections 4 et 5 obsolètes.
+
+## 18.1. Ports de développement
+
+| Service | Port local | Port container | Notes |
+|---------|-----------|----------------|-------|
+| **API Fastify** | 3000 | - | Backend principal |
+| **PostgreSQL** | 5433 | 5432 | Évite conflit avec Postgres local |
+| **Redis** | 6380 | 6379 | Évite conflit avec Redis local |
+| **Redis Commander** | 8081 | 8081 | UI Web pour Redis |
+
+## 18.2. Lancer l'environnement Docker
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+```
+
+> Utiliser `docker compose` (avec espace) et non `docker-compose` (deprecated).
+
+## 18.3. Connexion PostgreSQL
+
+```bash
+psql -h localhost -p 5433 -U sylion_dev -d sylion_dev
+```
+
+**Password** : Voir `POSTGRES_PASSWORD` dans `docker-compose.dev.yml`
+
+## 18.4. Variables .env recommandées
+
+```ini
+DATABASE_URL=postgres://sylion_dev:dev_password@localhost:5433/sylion_dev
+REDIS_URL=redis://localhost:6380
+DEMO_MODE=true
+WHATSAPP_PROVIDER=360dialog
+```
+
+> **⚠️ Production** : `DEMO_MODE=false` nécessite GCP/Vertex AI.  
+> DB et Redis sont **obligatoires** (pas de fallback).

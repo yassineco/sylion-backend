@@ -7,7 +7,7 @@ Backend principal de la plateforme **SylionAI** - Architecture multi-tenant What
 ### Prérequis
 
 - **Node.js** 20+
-- **Docker** & **Docker Compose**
+- **Docker** & **Docker Compose** v2
 - **PostgreSQL** avec extension `pgvector`
 - **Redis** pour le cache et les queues
 
@@ -19,24 +19,20 @@ Backend principal de la plateforme **SylionAI** - Architecture multi-tenant What
    cd sylion-backend
    ```
 
-2. **Installer les dépendances**
+2. **Démarrer les services Docker**
+   ```bash
+   docker compose -f docker-compose.dev.yml up -d
+   ```
+
+3. **Installer les dépendances**
    ```bash
    npm install
    ```
 
-3. **Configuration environnement**
+4. **Configuration environnement**
    ```bash
    cp .env.example .env.local
-   # Éditer .env.local avec vos configurations
-   ```
-
-4. **Démarrer les services Docker**
-   ```bash
-   # Environnement de développement
-   npm run docker:dev
-   
-   # Ou en production
-   npm run docker:prod
+   # Éditer .env.local si nécessaire (valeurs par défaut OK pour dev)
    ```
 
 5. **Lancer les migrations**
@@ -44,7 +40,7 @@ Backend principal de la plateforme **SylionAI** - Architecture multi-tenant What
    npm run db:migrate
    ```
 
-6. **Démarrer le serveur de développement**
+6. **Démarrer le serveur**
    ```bash
    npm run dev
    ```
@@ -56,6 +52,34 @@ Le serveur sera accessible sur `http://localhost:3000`
 - **Health Check** : `GET http://localhost:3000/health`
 - **Swagger Documentation** (dev) : `http://localhost:3000/docs`
 - **Admin Stats** : `GET http://localhost:3000/admin/queues/stats`
+
+---
+
+## 🎮 Scripts Démo WhatsApp
+
+Pour préparer une démonstration WhatsApp :
+
+```bash
+# 1. Créer un tenant de démo
+npm run create-demo-tenant
+
+# 2. Créer l'assistant IA (utiliser le tenantId affiché)
+npm run create-demo-assistant <tenantId>
+
+# 3. Valider que tout fonctionne
+npm run test:demo
+```
+
+### Que valide `npm run test:demo` ?
+
+| Test | Endpoint | Critère de succès |
+|------|----------|-------------------|
+| Health Check | `GET /health` | HTTP 200 |
+| Webhook WhatsApp | `POST /api/v1/whatsapp/webhook` | HTTP 200 + messageId |
+
+> **Note** : Le test `/health` considère HTTP 200 comme succès, même si le champ `status` retourne `healthy` ou `degraded`.
+
+---
 
 ## 📋 Variables d'Environnement Requises
 
