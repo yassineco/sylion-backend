@@ -1,0 +1,112 @@
+# ================================
+# Docker Compose - Sylion Backend Production
+# ================================
+# Usage: ENV_FILE=.env.prod docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+# ================================
+version: '3.8'
+
+services:
+  # ================================
+  # PostgreSQL Database (Production)
+  # ================================
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: sylion-postgres
+    environment:
+      POSTGRES_DB: sylion_prod
+      POSTGRES_USER: sylion_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-extensions.sql:/docker-entrypoint-initdb.d/init-extensions.sql:ro
+    # NO ports exposed - internal network only
+    networks:
+      - sylion-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sylion_user -d sylion_prod"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ================================
+  # Redis Cache & Queue (Production)
+  # ================================
+  redis:
+    image: redis:7-alpine
+    container_name: sylion-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    volumes:
+      - redis_data:/data
+    # NO ports exposed - internal network only
+    networks:
+      - sylion-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ================================
+  # Sylion Backend API (Production)
+  # ================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: sylion-backend
+    # Loopback only - Nginx on host will proxy to this
+    ports:
+      - "127.0.0.1:8000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://sylion_user:${POSTGRES_PASSWORD}@postgres:5432/sylion_prod
+      REDIS_URL: redis://default:${REDIS_PASSWORD}@redis:6379
+      # WhatsApp secrets from .env.prod
+      WHATSAPP_API_KEY: ${WHATSAPP_API_KEY:?WHATSAPP_API_KEY is required}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:?WHATSAPP_VERIFY_TOKEN is required}
+      WHATSAPP_WEBHOOK_URL: ${WHATSAPP_WEBHOOK_URL:-}
+      # LLM secrets
+      GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
+      # Security
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - sylion-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# ================================
+# Networks
+# ================================
+networks:
+  sylion-network:
+    driver: bridge
+    name: sylion-network
+
+# ================================
+# Volumes
+# ================================
+volumes:
+  postgres_data:
+    name: sylion-postgres-data
+  redis_data:
+    name: sylion-redis-data
