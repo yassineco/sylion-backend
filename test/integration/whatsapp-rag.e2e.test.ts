@@ -10,29 +10,29 @@
  */
 
 import { db, schema } from '@/db/index';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { eq } from 'drizzle-orm';
+import { vi } from 'vitest';
 
 // Note: Ce test E2E est en cours de refactorisation pour correspondre au schéma DB actuel
 // Certaines erreurs de typage sont attendues jusqu'à la mise à jour complète
 
 // Mock embedding service
-jest.mock('@/lib/embedding', () => ({
-  generateEmbedding: jest.fn<() => Promise<number[]>>().mockImplementation(async () => {
+vi.mock('@/lib/embedding', () => ({
+  generateEmbedding: vi.fn().mockImplementation(async () => {
     return new Array(768).fill(0).map((_, i) => Math.sin(i * 0.1) * 0.5);
   }),
-  generateBatchEmbeddings: jest.fn<() => Promise<number[][]>>().mockImplementation(async () => {
+  generateBatchEmbeddings: vi.fn().mockImplementation(async () => {
     return [new Array(768).fill(0).map((_, i) => Math.sin(i * 0.1) * 0.5)];
   }),
   EMBEDDING_DIMENSIONS: 768,
 }));
 
 // Mock LLM service to inspect calls
-const mockGenerateReply = jest.fn<() => Promise<string>>().mockImplementation(async () => {
+const mockGenerateReply = vi.fn().mockImplementation(async () => {
   return 'Voici les informations basées sur notre documentation.';
 });
 
-jest.mock('@/lib/llm', () => ({
+vi.mock('@/lib/llm', () => ({
   generateReply: (...args: unknown[]) => mockGenerateReply(...args),
 }));
 

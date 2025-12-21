@@ -8,16 +8,16 @@
  */
 
 import { db, schema } from '@/db/index';
-import { afterAll, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { eq, sql } from 'drizzle-orm';
+import { vi } from 'vitest';
 
 // Mock du service d'embedding pour les tests
-jest.mock('@/lib/embedding', () => ({
-  generateEmbedding: jest.fn<() => Promise<number[]>>().mockImplementation(async () => {
+vi.mock('@/lib/embedding', () => ({
+  generateEmbedding: vi.fn().mockImplementation(async () => {
     // Générer un embedding déterministe
     return new Array(768).fill(0).map((_, i) => Math.sin(i) * 0.5);
   }),
-  generateBatchEmbeddings: jest.fn<() => Promise<number[][]>>().mockImplementation(async () => {
+  generateBatchEmbeddings: vi.fn().mockImplementation(async () => {
     return [new Array(768).fill(0).map((_, i) => Math.sin(i) * 0.5)];
   }),
   EMBEDDING_DIMENSIONS: 768,

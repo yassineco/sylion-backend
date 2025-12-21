@@ -8,7 +8,7 @@
      * Includes both src/ and test/ for full IntelliSense support.
      */
     "noEmit": true,
-    "types": ["node", "jest"]
+    "types": ["node", "vitest/globals"]
   },
   "include": ["src/**/*", "test/**/*", "types/**/*"],
   "exclude": ["node_modules", "dist", "coverage", "docs"],

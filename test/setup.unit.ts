@@ -1,52 +1,30 @@
-// Set NODE_ENV to 'test' BEFORE any imports to ensure proper environment setup
+// test/setup.unit.ts
+// Setup for UNIT tests only - NO database initialization
+// Mocks all external dependencies (logger, redis, etc.)
+
 process.env.NODE_ENV = 'test';
 
 import { config } from 'dotenv';
-import { afterAll, beforeAll, vi } from 'vitest';
+import { vi } from 'vitest';
 
-// Load test environment variables from .env.test
-// This must happen before any imports that depend on env config
+// Load test environment variables
 config({ path: '.env.test' });
 
-import { DatabaseTestHelper } from './helpers/database.helper';
+// Reduce log noise
+process.env.LOG_LEVEL = 'error';
 
-// Global test setup
-beforeAll(async () => {
-  // Additional test environment setup
-  process.env.LOG_LEVEL = 'error'; // Reduce noise during tests
-  
-  // Initialize test database
-  try {
-    await DatabaseTestHelper.initialize();
-  } catch (error) {
-    console.error('Failed to initialize test database:', error);
-    throw error;
-  }
-});
-
-afterAll(async () => {
-  // Global cleanup - clean up any remaining test data
-  try {
-    await DatabaseTestHelper.cleanup();
-  } catch (error) {
-    console.warn('Global cleanup warning:', error);
-  }
-});
-
-// Global test configuration
-// Note: testTimeout is configured in vitest.config.ts
-
-// Mock external services by default
+// Mock logger - no external calls
 vi.mock('../src/lib/logger', () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),
     debug: vi.fn(),
+    fatal: vi.fn(),
   },
 }));
 
-// Mock Redis to avoid external dependencies in tests
+// Mock Redis - no external calls
 vi.mock('../src/lib/redis', () => ({
   getCache: vi.fn().mockResolvedValue(null),
   setCache: vi.fn().mockResolvedValue(true),
@@ -90,4 +68,9 @@ vi.mock('../src/lib/redis', () => ({
     messageList: 300,
     stats: 300,
   },
+}));
+
+// Mock jobs/queue system
+vi.mock('../src/jobs/index', () => ({
+  addJob: vi.fn().mockResolvedValue({ id: 'mock-job-id' }),
 }));

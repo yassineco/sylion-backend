@@ -1,52 +1,30 @@
-// Set NODE_ENV to 'test' BEFORE any imports to ensure proper environment setup
+// test/setup.int.ts
+// Setup for INTEGRATION tests - WITH database initialization
+// Includes all mocks from unit + DB setup/cleanup
+
 process.env.NODE_ENV = 'test';
 
 import { config } from 'dotenv';
 import { afterAll, beforeAll, vi } from 'vitest';
 
-// Load test environment variables from .env.test
-// This must happen before any imports that depend on env config
+// Load test environment variables BEFORE any imports
 config({ path: '.env.test' });
 
-import { DatabaseTestHelper } from './helpers/database.helper';
+// Reduce log noise
+process.env.LOG_LEVEL = 'error';
 
-// Global test setup
-beforeAll(async () => {
-  // Additional test environment setup
-  process.env.LOG_LEVEL = 'error'; // Reduce noise during tests
-  
-  // Initialize test database
-  try {
-    await DatabaseTestHelper.initialize();
-  } catch (error) {
-    console.error('Failed to initialize test database:', error);
-    throw error;
-  }
-});
-
-afterAll(async () => {
-  // Global cleanup - clean up any remaining test data
-  try {
-    await DatabaseTestHelper.cleanup();
-  } catch (error) {
-    console.warn('Global cleanup warning:', error);
-  }
-});
-
-// Global test configuration
-// Note: testTimeout is configured in vitest.config.ts
-
-// Mock external services by default
+// Mock logger
 vi.mock('../src/lib/logger', () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),
     debug: vi.fn(),
+    fatal: vi.fn(),
   },
 }));
 
-// Mock Redis to avoid external dependencies in tests
+// Mock Redis - still mocked even in integration tests
 vi.mock('../src/lib/redis', () => ({
   getCache: vi.fn().mockResolvedValue(null),
   setCache: vi.fn().mockResolvedValue(true),
@@ -91,3 +69,31 @@ vi.mock('../src/lib/redis', () => ({
     stats: 300,
   },
 }));
+
+// Mock jobs/queue system
+vi.mock('../src/jobs/index', () => ({
+  addJob: vi.fn().mockResolvedValue({ id: 'mock-job-id' }),
+}));
+
+// Import DB helper AFTER mocks are set up
+import { DatabaseTestHelper } from './helpers/database.helper';
+
+// Initialize database for integration tests
+beforeAll(async () => {
+  try {
+    await DatabaseTestHelper.initialize();
+  } catch (error) {
+    console.error('❌ Failed to initialize test database.');
+    console.error('   Make sure PostgreSQL is running: docker-compose -f docker-compose.dev.yml up -d postgres-dev');
+    console.error('   Error:', error);
+    throw error;
+  }
+});
+
+afterAll(async () => {
+  try {
+    await DatabaseTestHelper.cleanup();
+  } catch (error) {
+    console.warn('⚠️ Database cleanup warning:', error);
+  }
+});

@@ -7,10 +7,10 @@
  * Ces tests vérifient la structure et les constantes sans appeler l'API.
  */
 
-import { describe, expect, it, jest } from '@jest/globals';
+import { vi } from 'vitest';
 
 // Mock config AVANT tout import
-jest.mock('@/config/env', () => ({
+vi.mock('@/config/env', () => ({
   config: {
     vertex: {
       location: 'us-central1',
@@ -24,12 +24,12 @@ jest.mock('@/config/env', () => ({
 }));
 
 // Mock logger
-jest.mock('@/lib/logger', () => ({
+vi.mock('@/lib/logger', () => ({
   logger: {
-    debug: jest.fn(),
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
   },
 }));
 

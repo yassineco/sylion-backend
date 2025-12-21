@@ -4,7 +4,7 @@
  * ================================
  */
 
-import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+// Vitest globals are enabled via vitest config
 import type { LLMMessage } from '../../src/lib/llm';
 import { generateAssistantReply } from '../../src/lib/llm';
 import { getDefaultSystemPrompt } from '../../src/lib/sylion-default-prompt';

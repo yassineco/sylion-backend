@@ -7,17 +7,17 @@
  * Webhook → Gateway → Normalization → Core Service → Queue.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { eq } from 'drizzle-orm';
 import { FastifyInstance } from 'fastify';
 import supertest from 'supertest';
+import { vi } from 'vitest';
 import { db, schema } from '../../src/db/index';
 import { createApp } from '../../src/server';
 import { DatabaseTestHelper } from '../helpers/database.helper';
 
 // Mock the queue system for tests
-jest.mock('../../src/jobs/index', () => ({
-  addJob: jest.fn().mockResolvedValue({ id: 'mock-job-id' }),
+vi.mock('../../src/jobs/index', () => ({
+  addJob: vi.fn().mockResolvedValue({ id: 'mock-job-id' }),
 }));
 
 describe('WhatsApp Webhook Boss 1 Integration', () => {

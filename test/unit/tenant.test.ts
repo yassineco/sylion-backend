@@ -3,7 +3,7 @@
  * This is a minimal test to verify the test setup works
  */
 
-import { describe, expect, it } from '@jest/globals';
+// Vitest globals are enabled via vitest config
 
 describe('TenantService', () => {
   describe('Sample Tests', () => {
@@ -16,9 +16,9 @@ describe('TenantService', () => {
       expect(result).toBe('test');
     });
 
-    it('should work with mocked modules', () => {
-      // This verifies that our setup.ts mocking works
-      const { logger } = require('../../src/lib/logger');
+    it('should work with mocked modules', async () => {
+      // This verifies that our setup.unit.ts mocking works
+      const { logger } = await import('@/lib/logger');
       
       logger.info('test message');
       expect(logger.info).toHaveBeenCalledWith('test message');

@@ -12,9 +12,8 @@
  * - Retry automatique BullMQ (mock)
  */
 
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { Job } from 'bullmq';
-import type { Mock } from 'jest-mock';
+import { vi, type Mock } from 'vitest';
 import type { JobTypes } from '../../src/jobs/index';
 import { processWhatsAppIncoming } from '../../src/jobs/messageProcessor.worker';
 import type { WhatsAppSendResponse } from '../../src/modules/whatsapp/types';
@@ -26,20 +25,20 @@ const mockSendTextMessage = whatsAppProvider.sendTextMessage as Mock<
 >;
 
 // Mock du provider WhatsApp
-jest.mock('../../src/modules/whatsapp/whatsapp.provider', () => ({
+vi.mock('../../src/modules/whatsapp/whatsapp.provider', () => ({
   whatsAppProvider: {
-    sendTextMessage: jest.fn(),
+    sendTextMessage: vi.fn(),
   },
-  sendWhatsAppTextMessage: jest.fn(),
+  sendWhatsAppTextMessage: vi.fn(),
 }));
 
 // Mock du logger pour éviter le bruit dans les tests
-jest.mock('../../src/lib/logger', () => ({
+vi.mock('../../src/lib/logger', () => ({
   logger: {
-    info: jest.fn(),
-    debug: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
   },
 }));
 
