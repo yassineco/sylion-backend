@@ -7,7 +7,7 @@
  * ne peut accéder aux données d'un autre tenant.
  */
 
-import { beforeAll, beforeEach, describe, expect, it } from '@jest/globals';
+// Vitest globals enabled via config
 import { eq } from 'drizzle-orm';
 import { db, schema } from '../../src/db/index';
 import { AssistantService } from '../../src/modules/assistant/assistant.service';

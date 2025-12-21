@@ -1,52 +1,40 @@
-// Set NODE_ENV to 'test' BEFORE any imports to ensure proper environment setup
+// test/setup.unit.ts
+// Setup for UNIT tests only - NO database initialization
+// Mocks all external dependencies (logger, redis, etc.)
+
+// CRITICAL: Set NODE_ENV=test BEFORE any imports to enable test-safe env validation
 process.env.NODE_ENV = 'test';
 
-import { config } from 'dotenv';
-import { afterAll, beforeAll, vi } from 'vitest';
+// Set required env vars with dummy values BEFORE config/env.ts is imported
+// These are needed to pass Zod validation in test mode
+process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://test:test@localhost:5432/test';
+process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+process.env.WHATSAPP_API_KEY = process.env.WHATSAPP_API_KEY || 'test_whatsapp_api_key_dummy_value';
+process.env.WHATSAPP_VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || 'test_verify_token_dummy';
+process.env.GCP_PROJECT_ID = process.env.GCP_PROJECT_ID || 'test-project';
+process.env.GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS || '/tmp/test-credentials.json';
+process.env.GCS_BUCKET_NAME = process.env.GCS_BUCKET_NAME || 'test-bucket';
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_at_least_32_characters_long';
+process.env.LOG_LEVEL = 'error';
 
-// Load test environment variables from .env.test
-// This must happen before any imports that depend on env config
+import { config } from 'dotenv';
+import { vi } from 'vitest';
+
+// Load test environment variables (optional, may not exist in CI)
 config({ path: '.env.test' });
 
-import { DatabaseTestHelper } from './helpers/database.helper';
-
-// Global test setup
-beforeAll(async () => {
-  // Additional test environment setup
-  process.env.LOG_LEVEL = 'error'; // Reduce noise during tests
-  
-  // Initialize test database
-  try {
-    await DatabaseTestHelper.initialize();
-  } catch (error) {
-    console.error('Failed to initialize test database:', error);
-    throw error;
-  }
-});
-
-afterAll(async () => {
-  // Global cleanup - clean up any remaining test data
-  try {
-    await DatabaseTestHelper.cleanup();
-  } catch (error) {
-    console.warn('Global cleanup warning:', error);
-  }
-});
-
-// Global test configuration
-// Note: testTimeout is configured in vitest.config.ts
-
-// Mock external services by default
+// Mock logger - no external calls
 vi.mock('../src/lib/logger', () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),
     debug: vi.fn(),
+    fatal: vi.fn(),
   },
 }));
 
-// Mock Redis to avoid external dependencies in tests
+// Mock Redis - no external calls
 vi.mock('../src/lib/redis', () => ({
   getCache: vi.fn().mockResolvedValue(null),
   setCache: vi.fn().mockResolvedValue(true),
@@ -90,4 +78,9 @@ vi.mock('../src/lib/redis', () => ({
     messageList: 300,
     stats: 300,
   },
+}));
+
+// Mock jobs/queue system
+vi.mock('../src/jobs/index', () => ({
+  addJob: vi.fn().mockResolvedValue({ id: 'mock-job-id' }),
 }));

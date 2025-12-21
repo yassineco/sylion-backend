@@ -11,7 +11,7 @@ import {
     formatContextForPrompt,
 } from '@/modules/rag/rag.service';
 import type { RagSearchResult } from '@/modules/rag/rag.types';
-import { describe, expect, it } from '@jest/globals';
+// Vitest globals are enabled via vitest config
 
 describe('RAG Scoring & Context', () => {
   // Fixtures

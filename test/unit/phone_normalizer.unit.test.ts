@@ -10,7 +10,7 @@
  */
 
 import { normalizePhoneNumber } from '@/modules/whatsapp/types';
-import { describe, expect, it } from '@jest/globals';
+// Vitest globals are enabled via vitest config
 
 describe('normalizePhoneNumber', () => {
   

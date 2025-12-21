@@ -4,7 +4,7 @@
  * ================================
  */
 
-import { describe, expect, it } from '@jest/globals';
+// Vitest globals are enabled via vitest config
 import { getDefaultSystemPrompt } from '../../src/lib/sylion-default-prompt';
 
 // Mock des fonctions de détection (on va les extraire du code LLM)

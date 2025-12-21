@@ -7,15 +7,15 @@
  * Vérifie le flow: Webhook → Gateway → Queue → Worker → Mock Response
  */
 
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { vi } from 'vitest';
 
 // Mock Redis avant import des modules
-jest.mock('../../src/lib/redis', () => ({
+vi.mock('../../src/lib/redis', () => ({
   redisPublisher: {},
   redisSubscriber: {},
-  getCache: jest.fn<() => Promise<null>>().mockResolvedValue(null),
-  setCache: jest.fn<() => Promise<boolean>>().mockResolvedValue(true),
-  deleteCache: jest.fn<() => Promise<boolean>>().mockResolvedValue(true),
+  getCache: vi.fn().mockResolvedValue(null),
+  setCache: vi.fn().mockResolvedValue(true),
+  deleteCache: vi.fn().mockResolvedValue(true),
   cacheKeys: {
     conversation: (id: string) => `conv:${id}`,
     message: (id: string) => `msg:${id}`,

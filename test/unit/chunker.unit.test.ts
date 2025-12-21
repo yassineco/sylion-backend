@@ -14,7 +14,7 @@ import {
     validateChunk,
 } from '@/modules/rag/chunker';
 import { DEFAULT_CHUNKING_OPTIONS } from '@/modules/rag/rag.types';
-import { describe, expect, it } from '@jest/globals';
+// Vitest globals are enabled via vitest config
 
 describe('Chunker', () => {
   describe('estimateTokenCount', () => {
