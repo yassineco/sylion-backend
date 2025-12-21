@@ -145,4 +145,4 @@ Objectif : vérifier que le fichier `docker-compose.prod.yml` est syntaxiquement
 | Snippet YAML | Parasité / non valide | Minimal et valide |
 | Configuration Nginx | DNS Docker interne | `127.0.0.1:8000` explicite |
 | Tests CI | Mélangés avec prod | Section dédiée + cleanup |
-| Lisibilité | Moyenne | **Runbook production clair** |
+| Lisibilité | Moyenne | **Runbook production clair** |ci check
