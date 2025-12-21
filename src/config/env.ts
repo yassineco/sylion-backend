@@ -99,6 +99,44 @@ export type EnvConfig = z.infer<typeof envSchema>;
  * Validation et export de la configuration
  */
 function validateEnv(): EnvConfig {
+  // In test mode, use safe defaults to avoid process.exit
+  if (process.env.NODE_ENV === 'test') {
+    const testDefaults: Record<string, string> = {
+      NODE_ENV: 'test',
+      PORT: '3000',
+      HOST: '0.0.0.0',
+      DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
+      REDIS_URL: 'redis://localhost:6379',
+      WHATSAPP_API_URL: 'https://waba-v2.360dialog.io',
+      WHATSAPP_API_KEY: 'test_whatsapp_api_key_dummy_value',
+      WHATSAPP_VERIFY_TOKEN: 'test_verify_token_dummy',
+      GCP_PROJECT_ID: 'test-project',
+      GOOGLE_APPLICATION_CREDENTIALS: '/tmp/test-credentials.json',
+      GCS_BUCKET_NAME: 'test-bucket',
+      VERTEX_AI_LOCATION: 'us-central1',
+      VERTEX_AI_MODEL: 'gemini-1.5-pro',
+      VERTEX_EMBEDDING_MODEL: 'text-embedding-004',
+      INCOMING_MESSAGES_QUEUE_NAME: 'incomingMessages',
+      JWT_SECRET: 'test_jwt_secret_at_least_32_characters_long',
+      JWT_EXPIRES_IN: '7d',
+      RATE_LIMIT_MAX: '100',
+      RATE_LIMIT_WINDOW: '1m',
+      LOG_LEVEL: 'error',
+      LOG_PRETTY: 'false',
+      ENABLE_SWAGGER: 'false',
+      ENABLE_CORS: 'true',
+      ENABLE_HELMET: 'true',
+    };
+    // Merge defaults with actual env (actual takes precedence)
+    const mergedEnv = { ...testDefaults, ...process.env };
+    try {
+      return envSchema.parse(mergedEnv);
+    } catch (error) {
+      console.warn('⚠️ Test mode: env validation failed, using test defaults');
+      return envSchema.parse(testDefaults);
+    }
+  }
+
   try {
     return envSchema.parse(process.env);
   } catch (error) {

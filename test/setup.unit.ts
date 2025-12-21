@@ -2,16 +2,26 @@
 // Setup for UNIT tests only - NO database initialization
 // Mocks all external dependencies (logger, redis, etc.)
 
+// CRITICAL: Set NODE_ENV=test BEFORE any imports to enable test-safe env validation
 process.env.NODE_ENV = 'test';
+
+// Set required env vars with dummy values BEFORE config/env.ts is imported
+// These are needed to pass Zod validation in test mode
+process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://test:test@localhost:5432/test';
+process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+process.env.WHATSAPP_API_KEY = process.env.WHATSAPP_API_KEY || 'test_whatsapp_api_key_dummy_value';
+process.env.WHATSAPP_VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || 'test_verify_token_dummy';
+process.env.GCP_PROJECT_ID = process.env.GCP_PROJECT_ID || 'test-project';
+process.env.GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS || '/tmp/test-credentials.json';
+process.env.GCS_BUCKET_NAME = process.env.GCS_BUCKET_NAME || 'test-bucket';
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_at_least_32_characters_long';
+process.env.LOG_LEVEL = 'error';
 
 import { config } from 'dotenv';
 import { vi } from 'vitest';
 
-// Load test environment variables
+// Load test environment variables (optional, may not exist in CI)
 config({ path: '.env.test' });
-
-// Reduce log noise
-process.env.LOG_LEVEL = 'error';
 
 // Mock logger - no external calls
 vi.mock('../src/lib/logger', () => ({
