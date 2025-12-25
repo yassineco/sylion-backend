@@ -1,3 +1,66 @@
+## Local Development — Quick Start
+
+### Prerequisites
+
+- Node.js >= 20
+- npm >= 9
+- Docker & Docker Compose
+
+### Setup
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Create environment file from template
+cp .env.example .env
+
+# 3. Start Postgres and Redis containers
+docker compose -f docker-compose.dev.yml up -d
+
+# 4. Run database migrations
+npm run db:migrate
+
+# 5. Start the development server
+npm run dev
+```
+
+In development, Docker Compose runs only the dependencies (Postgres, Redis). The backend itself runs on the host via `npm run dev`.
+
+### Verification
+
+```bash
+curl http://localhost:3000/health
+```
+
+Expected response: `{"status":"ok"}` or similar health check payload.
+
+### Common Local Issues (First Run)
+
+- **Postgres/Redis not running** — Verify containers are up: `docker compose -f docker-compose.dev.yml ps`
+- **Migrations fail (DB not ready)** — Wait for containers to be healthy, then re-run `npm run db:migrate`
+- **Port 3000 already in use** — Check what process uses the port (`lsof -i :3000`) and stop it before retrying
+
+---
+
+## Minimal Environment Variables (Local Dev)
+
+For basic local startup, only the following variables are required:
+
+| Variable | Description |
+|----------|-------------|
+| `POSTGRES_URL` | PostgreSQL connection string (e.g., `postgresql://user:pass@localhost:5432/sylion`) |
+| `REDIS_URL` | Redis connection string (e.g., `redis://localhost:6379`) |
+| `JWT_SECRET` | Secret key for JWT signing (minimum 32 characters) |
+
+Connection strings in `.env` should match the service names and credentials defined in `docker-compose.dev.yml`. Refer to `.env.example` for default values.
+
+WhatsApp-related variables (`WHATSAPP_API_KEY`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`) are **not required** for basic local startup. They are only needed when testing WhatsApp message ingestion.
+
+See [WhatsApp Development Notes](#whatsapp-development-notes) for WhatsApp-specific setup.
+
+---
+
 ### Déploiement VPS Production (derrière Nginx)
 
 **Architecture de référence**  
@@ -147,3 +210,28 @@ Objectif : vérifier que le fichier `docker-compose.prod.yml` est syntaxiquement
 | Tests CI | Mélangés avec prod | Section dédiée + cleanup |
 | Lisibilité | Moyenne | **Runbook production clair** |ci check
 merge block test
+
+
+---
+
+## WhatsApp Development Notes
+
+WhatsApp message processing requires specific setup in development:
+
+### Key Points
+
+1. **A WhatsApp channel must exist in the database** — The worker resolves incoming messages to a channel by matching `channel.config.phoneNumber` (E.164 format) against the message's phone number.
+
+2. **HTTP 200 does not guarantee processing** — The webhook acknowledges receipt immediately, but messages are silently dropped if no matching channel exists.
+
+3. **Run the seed script before testing**:
+   ```bash
+   npx tsx scripts/seed-dev-channel.ts
+   ```
+   This script is idempotent and safe to run multiple times.
+
+### Documentation
+
+- [ADR-0003: WhatsApp Ingestion Contract](docs/architecture/adr/0003-whatsapp-ingestion-contract.md)
+- [WhatsApp Debugging Runbook](docs/operations/whatsapp-debugging.md)
+- [Dev Onboarding: WhatsApp Seed](docs/onboarding/dev-seed-whatsapp.md)
