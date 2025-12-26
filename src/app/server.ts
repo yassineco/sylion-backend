@@ -9,6 +9,7 @@
 
 import type { Worker } from 'bullmq';
 import fastify, { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { fileURLToPath } from 'node:url';
 
 // Imports locaux avec chemins ESM compatibles
 import { config } from '../config/env.js';
@@ -460,8 +461,9 @@ async function bootstrap(): Promise<void> {
   await server.start();
 }
 
-// Démarrer si exécuté directement
-if (require.main === module) {
+// Démarrer si exécuté directement (ESM compatible)
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMain) {
   bootstrap().catch((error) => {
     logger.fatal('Bootstrap failed', error);
     process.exit(1);

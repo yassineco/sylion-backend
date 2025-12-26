@@ -20,6 +20,7 @@
  *  - This file does NOT touch DB or queues directly.
  */
 
+import { addJob } from '@/jobs/index';
 import { logger } from '@/lib/logger';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { normalizeIncomingWhatsApp, WhatsAppNormalizationError } from './gateway';
@@ -54,6 +55,66 @@ export interface WebhookResponse {
 
 /**
  * ================================
+ * Helper Functions
+ * ================================
+ */
+
+/**
+ * Extract the value object from Meta Cloud API payload structure.
+ * Meta payloads have: body.entry[0].changes[0].value
+ *
+ * @param body - Raw webhook body
+ * @returns The value object if Meta shape, null otherwise
+ */
+function extractMetaValue(body: any): any | null {
+  try {
+    const value = body?.entry?.[0]?.changes?.[0]?.value;
+    return value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get messages array from webhook body (supports both 360dialog and Meta formats).
+ *
+ * @param body - Raw webhook body
+ * @returns Array of messages (empty if none found)
+ */
+function getMessages(body: any): any[] {
+  // 360dialog format: body.messages
+  if (Array.isArray(body?.messages)) {
+    return body.messages;
+  }
+  // Meta format: body.entry[0].changes[0].value.messages
+  const value = extractMetaValue(body);
+  if (value && Array.isArray(value.messages)) {
+    return value.messages;
+  }
+  return [];
+}
+
+/**
+ * Get statuses array from webhook body (supports both 360dialog and Meta formats).
+ *
+ * @param body - Raw webhook body
+ * @returns Array of statuses (empty if none found)
+ */
+function getStatuses(body: any): any[] {
+  // 360dialog format: body.statuses
+  if (Array.isArray(body?.statuses)) {
+    return body.statuses;
+  }
+  // Meta format: body.entry[0].changes[0].value.statuses
+  const value = extractMetaValue(body);
+  if (value && Array.isArray(value.statuses)) {
+    return value.statuses;
+  }
+  return [];
+}
+
+/**
+ * ================================
  * Gateway Handler
  * ================================
  */
@@ -75,12 +136,33 @@ export async function handleIncomingWebhook(
 ): Promise<WebhookResponse> {
   const requestId = (request as any).requestId as string | undefined;
 
-  // Extract key fields for logging (if present in typical WhatsApp payloads)
+  // Extract key fields for logging (supports both 360dialog and Meta formats)
   const body = request.body || {};
-  const hasMessages = Array.isArray((body as any).messages);
-  const messageCount = hasMessages ? (body as any).messages.length : 0;
-  const hasStatuses = Array.isArray((body as any).statuses);
-  const statusCount = hasStatuses ? (body as any).statuses.length : 0;
+  const metaValue = extractMetaValue(body);
+  const isMetaShape = metaValue !== null;
+
+  // Detect provider based on payload shape and env config
+  const envProvider = process.env['WHATSAPP_PROVIDER'] ?? '360dialog';
+  const provider = isMetaShape ? 'meta' : envProvider;
+
+  // Extract messages and statuses using helpers
+  const messages = getMessages(body);
+  const statuses = getStatuses(body);
+  const hasMessages = messages.length > 0;
+  const messageCount = messages.length;
+  const hasStatuses = statuses.length > 0;
+  const statusCount = statuses.length;
+
+  // Check for signature headers
+  const hasSignatureHeader =
+    !!request.headers['x-hub-signature-256'] || !!request.headers['x-signature'];
+
+  logger.debug('[WhatsApp Gateway] Provider detection', {
+    requestId,
+    detectedProvider: provider,
+    isMetaShape,
+    hasSignatureHeader,
+  });
 
   logger.info('[WhatsApp Gateway] Incoming webhook received', {
     requestId,
@@ -112,9 +194,9 @@ export async function handleIncomingWebhook(
     });
   }
 
-  // Build raw payload for normalization (default to 360dialog provider)
+  // Build raw payload for normalization (using detected provider)
   const rawPayload: RawWhatsAppPayload = {
-    provider: '360dialog',
+    provider: provider as RawWhatsAppPayload['provider'],
     body: request.body,
   };
 
@@ -130,11 +212,12 @@ export async function handleIncomingWebhook(
         details: error.details,
       });
 
-      return reply.status(400).send({
-        status: 'error',
+      // Always return 200 to avoid provider retries
+      return reply.status(200).send({
+        status: 'ok',
         source: 'whatsapp-webhook',
-        message: 'unrecognized_payload',
         requestId,
+        message: 'ignored_unrecognized_payload',
       });
     }
 
@@ -157,13 +240,35 @@ export async function handleIncomingWebhook(
     timestamp: normalizedMessage.timestamp.toISOString(),
   });
 
-  // TODO: resolve channel/tenant from phone number
-  // - Lookup channel by businessPhoneNumber (normalizedMessage.toPhone)
-  // - Get associated tenant for multi-tenant routing
+  // Enqueue normalized message to BullMQ (fire-and-forget)
+  // Note: tenant/channel resolution happens in the worker
+  try {
+    await addJob(
+      'incoming-message',
+      {
+        messageData: normalizedMessage,
+        timestamp: new Date().toISOString(),
+      },
+      {
+        priority: 10,
+        attempts: 3,
+      },
+    );
 
-  // TODO: push normalized message into BullMQ queue
-  // - Use enqueueIncomingWhatsAppJob from whatsapp_service.ts
-  // - Include tenant context for downstream processing
+    logger.info('[WhatsApp Gateway] Message enqueued for processing', {
+      requestId,
+      messageId: normalizedMessage.providerMessageId,
+      provider: normalizedMessage.provider,
+    });
+  } catch (enqueueError) {
+    // Fire-and-forget: log error but DO NOT fail HTTP response
+    // This prevents provider retries on queue failures
+    logger.error('[WhatsApp Gateway] Failed to enqueue message (non-fatal)', {
+      requestId,
+      error: enqueueError instanceof Error ? enqueueError.message : String(enqueueError),
+      messageId: normalizedMessage.providerMessageId,
+    });
+  }
 
   const response: WebhookResponse = {
     status: 'ok',
