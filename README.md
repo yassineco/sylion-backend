@@ -1,4 +1,4 @@
-## Local Development — Quick Start
+## Local Development — Source of Truth
 
 ### Prerequisites
 
@@ -6,26 +6,50 @@
 - npm >= 9
 - Docker & Docker Compose
 
+### Environment
+
+The environment file used in local development is `.env.local` (already present in the repo).  
+No manual `.env` creation is required.
+
+### Minimal Environment Variables (Local Dev)
+
+The following variables in `.env.local` are required for local startup:
+
+| Variable | Value | Notes |
+|----------|-------|-------|
+| `DATABASE_URL` | `postgresql://...@localhost:5433/...` | Must use port 5433 (Docker) |
+| `REDIS_URL` | `redis://localhost:6380` | Must use port 6380 (Docker) |
+| `JWT_SECRET` | (any string) | Minimum 32 characters |
+
 ### Setup
 
 ```bash
-# 1. Install dependencies
 npm install
-
-# 2. Create environment file from template
-cp .env.example .env
-
-# 3. Start Postgres and Redis containers
 docker compose -f docker-compose.dev.yml up -d
-
-# 4. Run database migrations
 npm run db:migrate
-
-# 5. Start the development server
 npm run dev
 ```
 
-In development, Docker Compose runs only the dependencies (Postgres, Redis). The backend itself runs on the host via `npm run dev`.
+### Architecture
+
+Docker runs **dependencies only** (not the backend):
+
+| Service         | Host Port | Container Port | Notes                          |
+|-----------------|-----------|----------------|--------------------------------|
+| PostgreSQL      | 5433      | 5432           | pgvector enabled               |
+| Redis           | 6380      | 6379           | Used by backend and workers    |
+| Redis Commander | 8081      | 8081           | Web UI for Redis               |
+
+The backend runs on the host via `npm run dev` (port 3000).
+
+### Port Reference
+
+| Port | Usage                                      |
+|------|--------------------------------------------|
+| 5432 | Native Postgres (may already be in use)    |
+| 5433 | Docker Postgres DEV — **use this one**     |
+| 6379 | Do NOT use for this project                |
+| 6380 | Docker Redis DEV — **use this one**        |
 
 ### Verification
 
@@ -33,31 +57,26 @@ In development, Docker Compose runs only the dependencies (Postgres, Redis). The
 curl http://localhost:3000/health
 ```
 
-Expected response: `{"status":"ok"}` or similar health check payload.
+### Common Pitfalls
 
-### Common Local Issues (First Run)
-
-- **Postgres/Redis not running** — Verify containers are up: `docker compose -f docker-compose.dev.yml ps`
-- **Migrations fail (DB not ready)** — Wait for containers to be healthy, then re-run `npm run db:migrate`
-- **Port 3000 already in use** — Check what process uses the port (`lsof -i :3000`) and stop it before retrying
+- Always specify the compose file: `docker compose -f docker-compose.dev.yml ...`
+- Ensure no conflicting Redis instances are running on different ports
+- Backend and workers must connect to the same Redis (port 6380)
+- If migrations fail, wait for containers to be healthy and retry
 
 ---
 
-## Minimal Environment Variables (Local Dev)
+## WhatsApp (Optional)
 
-For basic local startup, only the following variables are required:
+These variables are **not required** for basic local startup:
 
-| Variable | Description |
-|----------|-------------|
-| `POSTGRES_URL` | PostgreSQL connection string (e.g., `postgresql://user:pass@localhost:5432/sylion`) |
-| `REDIS_URL` | Redis connection string (e.g., `redis://localhost:6379`) |
-| `JWT_SECRET` | Secret key for JWT signing (minimum 32 characters) |
+- `WHATSAPP_API_KEY`
+- `WHATSAPP_VERIFY_TOKEN`
+- `WHATSAPP_PHONE_NUMBER_ID`
 
-Connection strings in `.env` should match the service names and credentials defined in `docker-compose.dev.yml`. Refer to `.env.example` for default values.
+They are only needed when testing WhatsApp message ingestion.
 
-WhatsApp-related variables (`WHATSAPP_API_KEY`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`) are **not required** for basic local startup. They are only needed when testing WhatsApp message ingestion.
-
-See [WhatsApp Development Notes](#whatsapp-development-notes) for WhatsApp-specific setup.
+See [WhatsApp Development Notes](#whatsapp-development-notes) for setup details.
 
 ---
 
