@@ -137,3 +137,6 @@ pnpm-lock.yaml
 docs/build/
 docs/.vuepress/dist/
 backups/
+
+# Progress logs (local)
+docs/progress/
