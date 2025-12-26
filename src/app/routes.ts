@@ -16,6 +16,7 @@ import { registerChannelRoutes } from '@/modules/channel/channel.routes';
 import { registerConversationRoutes } from '@/modules/conversation/conversation.routes';
 import { registerMessageRoutes } from '@/modules/message/message.routes';
 import { registerTenantRoutes } from '@/modules/tenant/tenant.routes';
+import { registerWhatsAppGateway } from '@/modules/whatsapp/whatsapp.gateway';
 import { registerWhatsAppRoutes } from '@/modules/whatsapp/whatsapp.routes';
 
 /**
@@ -25,6 +26,11 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   logger.info('Registering API routes...');
 
   try {
+    // ================================
+    // WhatsApp Gateway (root level - webhook endpoints)
+    // ================================
+    await fastify.register(registerWhatsAppGateway, { prefix: '/whatsapp' });
+
     // ================================
     // API Version 1 - Routes principales
     // ================================
