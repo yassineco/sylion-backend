@@ -21,6 +21,29 @@ Objectif : fournir une architecture **scalable, fiable et extensible**, démarra
 
 ---
 
+# 📦 Knowledge Admin & Quotas
+
+The backend implements a complete knowledge document management system with quota enforcement:
+
+### Knowledge Documents
+- Upload, index, and search documents via `/admin/knowledge/*` endpoints
+- Statuses: `uploaded` → `indexing` → `indexed` (or `error`)
+- Chunking + pgvector embeddings (768 dimensions, HNSW index)
+- BullMQ worker handles async indexation
+
+### DB-Driven Quotas
+- Plans stored in `plans` table with `limits_json`
+- Daily counters in `usage_counters_daily` table
+- Atomic enforcement: indexing consumes credit before processing
+- Hard limit: returns `403 QUOTA_EXCEEDED` when exhausted
+
+### Relevant Documentation
+- **[API_KNOWLEDGE_ADMIN.md](./API_KNOWLEDGE_ADMIN.md)** — Full endpoint reference
+- **[architecture/ARCHITECTURE_RULES.md](./architecture/ARCHITECTURE_RULES.md)** — Indexing flow
+- **[operations/INCIDENT_RUNBOOK.md](./operations/INCIDENT_RUNBOOK.md)** — Quota debugging
+
+---
+
 # 🧱 2. Architecture Technique
 
 ```
