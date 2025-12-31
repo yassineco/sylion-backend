@@ -11,6 +11,7 @@ import { logger } from '@/lib/logger';
 import { FastifyInstance } from 'fastify';
 
 // Import des routes des modules
+import { registerKnowledgeRoutes } from '@/modules/admin/knowledge.routes';
 import { registerAssistantRoutes } from '@/modules/assistant/assistant.routes';
 import { registerChannelRoutes } from '@/modules/channel/channel.routes';
 import { registerConversationRoutes } from '@/modules/conversation/conversation.routes';
@@ -59,6 +60,9 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     // Routes administratives
     // ================================
     await fastify.register(async function admin(fastify: FastifyInstance) {
+      // Routes pour la gestion des documents knowledge (RAG)
+      await fastify.register(registerKnowledgeRoutes, { prefix: '/knowledge' });
+
       // Statistiques des queues
       fastify.get('/queues/stats', {
         schema: {

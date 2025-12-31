@@ -80,18 +80,52 @@ export async function processWhatsAppIncoming(
       conversationId,
     });
 
+    const providerMessageId = sendResult.messages[0]?.id;
+
     logger.info('[Worker] Echo message sent successfully', {
       jobId: job.id,
       tenantId,
       channelId,
       conversationId,
       messageId,
-      providerMessageId: sendResult.messages[0]?.id,
+      providerMessageId,
     });
+
+    // Persist outbound message in DB
+    if (!conversationId) {
+      logger.warn('[Worker] No conversationId, skipping outbound message DB insert', {
+        jobId: job.id,
+        tenantId,
+        channelId,
+      });
+    } else {
+      const outboundExternalId = providerMessageId ?? `mock_${Date.now()}`;
+      await messageService.createMessage(conversationId, {
+        direction: 'outbound',
+        type: 'text',
+        content: echoText,
+        status: 'processed',
+        externalId: outboundExternalId,
+        externalTimestamp: new Date(),
+        metadata: {
+          mode: 'echo',
+          senderType: 'assistant',
+          sourceMessageId: messageId,
+          provider: provider.name ?? 'mock',
+          tenantId,
+          channelId,
+        },
+      });
+      logger.debug('[Worker] Outbound echo message persisted', {
+        jobId: job.id,
+        conversationId,
+        externalId: outboundExternalId,
+      });
+    }
 
     return {
       success: true,
-      messageId: sendResult.messages[0]?.id,
+      messageId: providerMessageId,
     };
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : String(err);
@@ -234,6 +268,11 @@ async function resolveMessageContext(
  * Trouver un channel par numéro de téléphone
  */
 async function findChannelByPhoneNumber(phoneNumber: string) {
+  const normalize = (value: unknown): string =>
+    typeof value === 'string' ? value.trim() : '';
+
+  const normalizedInput = normalize(phoneNumber);
+
   try {
     const channels = await db
       .select()
@@ -245,11 +284,19 @@ async function findChannelByPhoneNumber(phoneNumber: string) {
         )
       );
 
-    // Recherche dans la configuration des channels
     for (const channel of channels) {
       const config = channel.config as any;
-      if (config?.phoneNumber === phoneNumber || config?.businessPhoneNumber === phoneNumber) {
-        return channel;
+      const candidates = [
+        (channel as any).whatsappPhoneNumber,
+        (channel as any).whatsapp_phone_number,
+        config?.phoneNumber,
+        config?.businessPhoneNumber,
+      ];
+
+      for (const candidate of candidates) {
+        if (normalize(candidate) === normalizedInput) {
+          return channel;
+        }
       }
     }
 

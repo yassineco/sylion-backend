@@ -7,20 +7,85 @@
  * Architecture multi-tenant avec support pgvector pour RAG.
  */
 
-import { 
-  pgTable, 
-  uuid, 
-  text, 
-  timestamp, 
-  boolean, 
-  integer, 
-  jsonb, 
-  varchar,
-  decimal,
-  index,
-  uniqueIndex,
-} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+    bigint,
+    boolean,
+    date,
+    decimal,
+    index,
+    integer,
+    jsonb,
+    pgTable,
+    text,
+    timestamp,
+    uniqueIndex,
+    uuid,
+    varchar,
+} from 'drizzle-orm/pg-core';
+
+/**
+ * ================================
+ * Plans - Configuration des offres (DB-driven limits)
+ * ================================
+ */
+export const plans = pgTable('plans', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar('code', { length: 50 }).notNull().unique(), // starter, pro, business, enterprise
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description'),
+  
+  // Limites en JSON pour flexibilité maximale
+  limitsJson: jsonb('limits_json').notNull().default('{}'),
+  /*
+   * Structure limits_json:
+   * {
+   *   maxDocuments: number,           // Max documents RAG
+   *   maxStorageMb: number,           // Max storage en MB
+   *   maxDocSizeMb: number,           // Max taille par document en MB
+   *   maxDailyIndexing: number,       // Max indexations/jour
+   *   maxDailyRagQueries: number,     // Max requêtes RAG/jour
+   *   maxDailyMessages: number,       // Max messages/jour
+   *   maxTokensIn: number,            // Max tokens input/jour
+   *   maxTokensOut: number,           // Max tokens output/jour
+   *   ragEnabled: boolean,            // RAG activé
+   *   prioritySupport: boolean,       // Support prioritaire
+   *   customBranding: boolean,        // Branding personnalisé
+   * }
+   */
+  
+  // Prix (pour affichage)
+  priceMonthly: decimal('price_monthly', { precision: 10, scale: 2 }),
+  priceCurrency: varchar('price_currency', { length: 3 }).default('EUR'),
+  
+  // État
+  isActive: boolean('is_active').notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  
+  // Timestamps
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table: any) => ({
+  codeIdx: uniqueIndex('plans_code_idx').on(table.code),
+  activeIdx: index('plans_active_idx').on(table.isActive),
+}));
+
+/**
+ * Interface TypeScript pour les limites du plan
+ */
+export interface PlanLimits {
+  maxDocuments: number;
+  maxStorageMb: number;
+  maxDocSizeMb: number;
+  maxDailyIndexing: number;
+  maxDailyRagQueries: number;
+  maxDailyMessages: number;
+  maxTokensIn: number;
+  maxTokensOut: number;
+  ragEnabled: boolean;
+  prioritySupport: boolean;
+  customBranding: boolean;
+}
 
 /**
  * ================================
@@ -34,17 +99,22 @@ export const tenants = pgTable('tenants', {
   
   // Configuration
   isActive: boolean('is_active').notNull().default(true),
-  plan: varchar('plan', { length: 50 }).notNull().default('free'), // free, pro, enterprise
+  plan: varchar('plan', { length: 50 }).notNull().default('free'), // Legacy: free, pro, enterprise
+  planCode: varchar('plan_code', { length: 50 }).notNull().default('starter'), // Nouveau: starter, pro, business, enterprise
   
-  // Quotas mensuels
+  // Quotas mensuels (legacy - sera remplacé par planCode)
   quotaMessages: integer('quota_messages').notNull().default(1000),
   quotaAiRequests: integer('quota_ai_requests').notNull().default(100),
   quotaStorageMb: integer('quota_storage_mb').notNull().default(100),
   
-  // Tracking usage
+  // Tracking usage (legacy)
   usedMessages: integer('used_messages').notNull().default(0),
   usedAiRequests: integer('used_ai_requests').notNull().default(0),
   usedStorageMb: integer('used_storage_mb').notNull().default(0),
+  
+  // Usage RAG documents
+  documentsCount: integer('documents_count').notNull().default(0),
+  documentsStorageMb: decimal('documents_storage_mb', { precision: 10, scale: 2 }).notNull().default('0'),
   
   // Contact & billing
   contactEmail: varchar('contact_email', { length: 255 }),
@@ -63,6 +133,7 @@ export const tenants = pgTable('tenants', {
   slugIdx: uniqueIndex('tenants_slug_idx').on(table.slug),
   activeIdx: index('tenants_active_idx').on(table.isActive),
   planIdx: index('tenants_plan_idx').on(table.plan),
+  planCodeIdx: index('tenants_plan_code_idx').on(table.planCode),
 }));
 
 /**
@@ -236,7 +307,89 @@ export const messages = pgTable('messages', {
 
 /**
  * ================================
- * Documents - Stockage RAG
+ * Knowledge Documents - Stockage RAG (anciennement Documents)
+ * ================================
+ */
+export const knowledgeDocuments = pgTable('knowledge_documents', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  
+  // Informations du document
+  name: varchar('name', { length: 255 }).notNull(),
+  originalName: varchar('original_name', { length: 255 }), // Nom original du fichier uploadé
+  type: varchar('type', { length: 50 }).notNull(), // pdf, docx, txt, html, md, etc.
+  mimeType: varchar('mime_type', { length: 100 }), // application/pdf, text/plain, etc.
+  sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull().default(0),
+  hash: varchar('hash', { length: 64 }).notNull(), // SHA-256 pour déduplication
+  
+  // Stockage
+  storageUri: text('storage_uri'), // GCS/S3 URI: gs://bucket/path ou s3://bucket/path
+  storageUrl: text('storage_url'), // URL accessible (legacy ou signed URL)
+  originalUrl: text('original_url'), // URL d'origine si applicable
+  
+  // Statut de traitement
+  status: varchar('status', { length: 50 }).notNull().default('uploaded'), 
+  // uploaded -> indexing -> indexed | error
+  errorReason: text('error_reason'), // Message d'erreur si status = error
+  
+  // Processing
+  processedAt: timestamp('processed_at'),
+  indexedAt: timestamp('indexed_at'),
+  
+  // Métadonnées
+  metadata: jsonb('metadata').notNull().default('{}'),
+  tags: jsonb('tags').notNull().default('[]'),
+  
+  // Statistiques d'indexation
+  chunkCount: integer('chunk_count').notNull().default(0),
+  totalTokens: integer('total_tokens').notNull().default(0),
+  
+  // Utilisateur qui a uploadé
+  uploadedBy: varchar('uploaded_by', { length: 255 }),
+  
+  // Timestamps
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table: any) => ({
+  tenantIdx: index('knowledge_documents_tenant_idx').on(table.tenantId),
+  typeIdx: index('knowledge_documents_type_idx').on(table.type),
+  statusIdx: index('knowledge_documents_status_idx').on(table.status),
+  hashIdx: index('knowledge_documents_hash_idx').on(table.tenantId, table.hash),
+  uploadedByIdx: index('knowledge_documents_uploaded_by_idx').on(table.uploadedBy),
+}));
+
+/**
+ * ================================
+ * Knowledge Chunks - Chunks pour RAG avec embeddings
+ * ================================
+ */
+export const knowledgeChunks = pgTable('knowledge_chunks', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  documentId: uuid('document_id').notNull().references(() => knowledgeDocuments.id, { onDelete: 'cascade' }),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  
+  // Contenu du chunk
+  content: text('content').notNull(),
+  chunkIndex: integer('chunk_index').notNull(), // Position dans le document
+  
+  // Embedding vector (pgvector)
+  embedding: text('embedding'), // JSON array des embeddings - sera converti en vector plus tard
+  
+  // Métadonnées du chunk
+  metadata: jsonb('metadata').notNull().default('{}'),
+  tokenCount: integer('token_count').notNull(),
+  
+  // Timestamps
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table: any) => ({
+  documentIdx: index('knowledge_chunks_document_idx').on(table.documentId),
+  tenantIdx: index('knowledge_chunks_tenant_idx').on(table.tenantId),
+}));
+
+/**
+ * ================================
+ * Documents - Stockage RAG (LEGACY - garder pour compatibilité)
  * ================================
  */
 export const documents = pgTable('documents', {
@@ -282,7 +435,7 @@ export const documents = pgTable('documents', {
 
 /**
  * ================================
- * Document Chunks - Chunks pour RAG avec embeddings
+ * Document Chunks - Chunks pour RAG avec embeddings (LEGACY)
  * ================================
  */
 export const documentChunks = pgTable('document_chunks', {
@@ -312,7 +465,46 @@ export const documentChunks = pgTable('document_chunks', {
 
 /**
  * ================================
- * Quotas Tracking - Suivi d'usage détaillé
+ * Usage Counters Daily - Tracking quotas journaliers
+ * ================================
+ */
+export const usageCountersDaily = pgTable('usage_counters_daily', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  
+  // Date du compteur (jour)
+  date: date('date').notNull(),
+  
+  // Compteurs RAG
+  docsIndexedCount: integer('docs_indexed_count').notNull().default(0),
+  ragQueriesCount: integer('rag_queries_count').notNull().default(0),
+  
+  // Compteurs messages
+  messagesCount: integer('messages_count').notNull().default(0),
+  messagesInbound: integer('messages_inbound').notNull().default(0),
+  messagesOutbound: integer('messages_outbound').notNull().default(0),
+  
+  // Compteurs tokens
+  tokensIn: bigint('tokens_in', { mode: 'number' }).notNull().default(0),
+  tokensOut: bigint('tokens_out', { mode: 'number' }).notNull().default(0),
+  
+  // Compteurs AI
+  aiRequestsCount: integer('ai_requests_count').notNull().default(0),
+  
+  // Compteurs storage (en bytes ajoutés ce jour)
+  storageBytesAdded: bigint('storage_bytes_added', { mode: 'number' }).notNull().default(0),
+  
+  // Timestamps
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table: any) => ({
+  tenantDateIdx: uniqueIndex('usage_counters_daily_tenant_date_idx').on(table.tenantId, table.date),
+  dateIdx: index('usage_counters_daily_date_idx').on(table.date),
+}));
+
+/**
+ * ================================
+ * Quotas Tracking - Suivi d'usage détaillé (LEGACY)
  * ================================
  */
 export const quotaUsage = pgTable('quota_usage', {
@@ -344,6 +536,9 @@ export const quotaUsage = pgTable('quota_usage', {
 /**
  * Export des types Drizzle
  */
+export type Plan = typeof plans.$inferSelect;
+export type NewPlan = typeof plans.$inferInsert;
+
 export type Tenant = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;
 
@@ -359,11 +554,20 @@ export type NewConversation = typeof conversations.$inferInsert;
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
 
+export type KnowledgeDocument = typeof knowledgeDocuments.$inferSelect;
+export type NewKnowledgeDocument = typeof knowledgeDocuments.$inferInsert;
+
+export type KnowledgeChunk = typeof knowledgeChunks.$inferSelect;
+export type NewKnowledgeChunk = typeof knowledgeChunks.$inferInsert;
+
 export type Document = typeof documents.$inferSelect;
 export type NewDocument = typeof documents.$inferInsert;
 
 export type DocumentChunk = typeof documentChunks.$inferSelect;
 export type NewDocumentChunk = typeof documentChunks.$inferInsert;
+
+export type UsageCounterDaily = typeof usageCountersDaily.$inferSelect;
+export type NewUsageCounterDaily = typeof usageCountersDaily.$inferInsert;
 
 export type QuotaUsage = typeof quotaUsage.$inferSelect;
 export type NewQuotaUsage = typeof quotaUsage.$inferInsert;

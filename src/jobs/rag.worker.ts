@@ -5,6 +5,7 @@
  * 
  * Handlers BullMQ pour les jobs RAG.
  * Indexation de documents et mise à jour des embeddings.
+ * Supporte les documents legacy ET les nouveaux knowledge documents.
  * 
  * @module jobs/rag.worker
  */
@@ -14,18 +15,22 @@ import { documentService } from '@/modules/rag/document.service';
 import type { RagIndexDocumentJobPayload, RagUpdateEmbeddingsJobPayload } from '@/modules/rag/rag.types';
 import { Job } from 'bullmq';
 
+// Import des nouveaux handlers knowledge
+import { processKnowledgeIndexDocument, processKnowledgeReindex } from './knowledge.worker';
+
 /**
  * Handler pour l'indexation d'un document
  * 
  * Job: rag:index-document
  * 
  * Workflow:
- * 1. Récupère le document depuis la DB
- * 2. Extrait le contenu textuel
- * 3. Découpe en chunks
- * 4. Génère les embeddings via Vertex AI
- * 5. Stocke les chunks avec embeddings dans document_chunks
- * 6. Met à jour le statut du document
+ * 1. Vérifie si c'est un document knowledge ou legacy
+ * 2. Récupère le document depuis la DB
+ * 3. Extrait le contenu textuel
+ * 4. Découpe en chunks
+ * 5. Génère les embeddings via Vertex AI
+ * 6. Stocke les chunks avec embeddings dans document_chunks ou knowledge_chunks
+ * 7. Met à jour le statut du document
  */
 export async function processRagIndexDocument(
   job: Job<RagIndexDocumentJobPayload>
@@ -40,6 +45,21 @@ export async function processRagIndexDocument(
     documentType: metadata.type,
   });
 
+  // Essayer d'abord avec les knowledge documents (nouveau système)
+  try {
+    const { knowledgeService } = await import('@/modules/admin/knowledge.service');
+    const knowledgeDoc = await knowledgeService.getDocumentById(tenantId, documentId);
+    
+    if (knowledgeDoc) {
+      // C'est un knowledge document - utiliser le nouveau worker
+      return processKnowledgeIndexDocument(job);
+    }
+  } catch (error) {
+    // Si le module knowledge n'est pas disponible, continuer avec l'ancien système
+    logger.debug('Knowledge service not available, falling back to legacy', { documentId });
+  }
+
+  // Fallback: utiliser l'ancien système (documents legacy)
   try {
     // Indexer le document
     const result = await documentService.indexDocument(documentId, tenantId);
@@ -110,6 +130,21 @@ export async function processRagUpdateEmbeddings(
     forceReindex,
   });
 
+  // Essayer d'abord avec les knowledge documents (nouveau système)
+  try {
+    const { knowledgeService } = await import('@/modules/admin/knowledge.service');
+    const knowledgeDoc = await knowledgeService.getDocumentById(tenantId, documentId);
+    
+    if (knowledgeDoc) {
+      // C'est un knowledge document - utiliser le nouveau worker
+      return processKnowledgeReindex(job);
+    }
+  } catch (error) {
+    // Si le module knowledge n'est pas disponible, continuer avec l'ancien système
+    logger.debug('Knowledge service not available, falling back to legacy', { documentId });
+  }
+
+  // Fallback: utiliser l'ancien système (documents legacy)
   try {
     // Vérifier que le document existe
     const document = await documentService.getDocumentById(documentId, tenantId);

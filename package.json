@@ -33,7 +33,8 @@
     "dev:dryrun": "WHATSAPP_DRY_RUN=true npm run dev",
     "test:whatsapp:live": "WHATSAPP_LIVE_TEST=true tsx scripts/live-test-send.ts",
     "load:kb": "tsx scripts/loadKnowledgePack.ts",
-    "test:gcp": "tsx scripts/test-gcp-auth.ts"
+    "test:gcp": "tsx scripts/test-gcp-auth.ts",
+    "db:seed:plans": "tsx scripts/seed-plans.ts"
   },
   "keywords": [
     "sylion",
