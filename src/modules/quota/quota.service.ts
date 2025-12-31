@@ -384,6 +384,80 @@ export async function updateTenantDocumentStats(
 }
 
 /**
+ * Consommer 1 crédit d'indexation journalier de manière atomique
+ * Throw QuotaError si le quota est atteint
+ */
+export async function consumeDailyIndexingOrThrow(tenantId: string): Promise<void> {
+  const context = await getTenantLimits(tenantId);
+  const { limits } = context;
+
+  // Vérifier si RAG est activé
+  if (!limits.ragEnabled) {
+    throw new QuotaError(
+      'RAG is not enabled for your plan',
+      QuotaErrorCode.RAG_DISABLED,
+      { planCode: context.planCode }
+    );
+  }
+
+  // Si illimité, on autorise directement
+  if (limits.maxDailyIndexing <= 0) {
+    logger.debug('Unlimited indexing allowed', { tenantId });
+    return;
+  }
+
+  const today = getTodayDate();
+  const maxDailyIndexing = limits.maxDailyIndexing;
+
+  // 1. Upsert: créer la ligne si absente
+  await db.execute(sql`
+    INSERT INTO usage_counters_daily (id, tenant_id, date, docs_indexed_count, created_at, updated_at)
+    VALUES (gen_random_uuid(), ${tenantId}, ${today}::date, 0, NOW(), NOW())
+    ON CONFLICT (tenant_id, date) DO NOTHING
+  `);
+
+  // 2. Incrémenter de manière atomique SEULEMENT si on est sous la limite
+  const updateResult = await db.execute(sql`
+    UPDATE usage_counters_daily
+    SET docs_indexed_count = docs_indexed_count + 1, updated_at = NOW()
+    WHERE tenant_id = ${tenantId} AND date = ${today}::date
+      AND docs_indexed_count + 1 <= ${maxDailyIndexing}
+    RETURNING docs_indexed_count
+  `);
+
+  // Si RETURNING ne renvoie rien => quota atteint
+  const rowCount =
+    (updateResult as any).rowCount ??
+    ((updateResult as any).rows?.length ?? 0);
+
+  if (rowCount === 0) {
+    // Récupérer le compteur actuel pour le message d'erreur
+    const selectResult = await db.execute(sql`
+      SELECT docs_indexed_count FROM usage_counters_daily
+      WHERE tenant_id = ${tenantId} AND date = ${today}::date
+    `);
+    const currentCount = (selectResult.rows?.[0] as { docs_indexed_count: number } | undefined)?.docs_indexed_count ?? 0;
+
+    throw new QuotaError(
+      `Daily indexing limit reached: ${currentCount}/${maxDailyIndexing}`,
+      QuotaErrorCode.DAILY_LIMIT_REACHED,
+      {
+        currentCount,
+        maxDailyIndexing,
+        type: 'indexing',
+      }
+    );
+  }
+
+  const newCount = (updateResult as any).rows?.[0]?.docs_indexed_count;
+  logger.debug('Indexing credit consumed', {
+    tenantId,
+    newCount,
+    maxDailyIndexing,
+  });
+}
+
+/**
  * Vérifier les quotas (version générique pour check sans throw)
  */
 export async function checkQuota(
@@ -436,4 +510,5 @@ export const quotaService = {
   incrementDailyCounter,
   updateTenantDocumentStats,
   checkQuota,
+  consumeDailyIndexingOrThrow,
 };

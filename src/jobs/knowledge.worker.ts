@@ -57,8 +57,8 @@ export async function processKnowledgeIndexDocument(
   });
 
   try {
-    // 1. Vérifier les quotas d'indexation
-    await quotaService.assertCanIndexDocument(tenantId);
+    // 1. Consommer un crédit d'indexation (atomique, hard limit)
+    await quotaService.consumeDailyIndexingOrThrow(tenantId);
 
     // 2. Mettre le statut en "indexing"
     await knowledgeService.updateDocumentStatus(documentId, 'indexing');

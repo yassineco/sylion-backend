@@ -13,6 +13,12 @@
 -- ================================
 
 -- ================================
+-- 0. Required Extensions
+-- ================================
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- ================================
 -- 1. Plans Table
 -- ================================
 CREATE TABLE IF NOT EXISTS plans (
@@ -80,6 +86,23 @@ CREATE INDEX IF NOT EXISTS knowledge_documents_status_idx ON knowledge_documents
 CREATE INDEX IF NOT EXISTS knowledge_documents_hash_idx ON knowledge_documents(tenant_id, hash);
 CREATE INDEX IF NOT EXISTS knowledge_documents_uploaded_by_idx ON knowledge_documents(uploaded_by);
 
+-- Add UNIQUE constraint (tenant_id, hash) for deduplication (idempotent)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'knowledge_documents_tenant_hash_unique'
+      AND table_name = 'knowledge_documents'
+      AND constraint_schema = 'public'
+  ) THEN
+    ALTER TABLE knowledge_documents 
+    ADD CONSTRAINT knowledge_documents_tenant_hash_unique 
+    UNIQUE (tenant_id, hash);
+  END IF;
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END $$;
+
 -- ================================
 -- 4. Knowledge Chunks Table (with vector)
 -- ================================
@@ -98,6 +121,23 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
 
 CREATE INDEX IF NOT EXISTS knowledge_chunks_document_idx ON knowledge_chunks(document_id);
 CREATE INDEX IF NOT EXISTS knowledge_chunks_tenant_idx ON knowledge_chunks(tenant_id);
+
+-- Add UNIQUE constraint (document_id, chunk_index) for chunk ordering (idempotent)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'knowledge_chunks_document_index_unique'
+      AND table_name = 'knowledge_chunks'
+      AND constraint_schema = 'public'
+  ) THEN
+    ALTER TABLE knowledge_chunks 
+    ADD CONSTRAINT knowledge_chunks_document_index_unique 
+    UNIQUE (document_id, chunk_index);
+  END IF;
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END $$;
 
 -- Create HNSW index for fast similarity search (if not exists)
 -- Note: This requires the pgvector extension
@@ -160,12 +200,44 @@ ON CONFLICT (code) DO UPDATE SET
   sort_order = EXCLUDED.sort_order,
   updated_at = NOW();
 
+-- Add FK constraint tenants.plan_code -> plans.code (idempotent)
+-- NOTE: Must be AFTER seed to ensure plans exist for FK validation
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'tenants_plan_code_fk'
+      AND table_name = 'tenants'
+      AND constraint_schema = 'public'
+  ) THEN
+    -- Normalize any unknown plan_code to starter before FK validation
+    UPDATE tenants
+    SET plan_code = 'starter'
+    WHERE plan_code IS NULL
+       OR plan_code NOT IN (SELECT code FROM plans);
+    ALTER TABLE tenants 
+    ADD CONSTRAINT tenants_plan_code_fk 
+    FOREIGN KEY (plan_code) REFERENCES plans(code) ON UPDATE CASCADE;
+  END IF;
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END $$;
+
 -- ================================
 -- 7. Update existing tenants to have plan_code based on plan column
+-- (Only if column tenants.plan exists - safe for fresh installs)
 -- ================================
-UPDATE tenants SET plan_code = 'pro' WHERE plan = 'pro';
-UPDATE tenants SET plan_code = 'business' WHERE plan = 'enterprise';
-UPDATE tenants SET plan_code = 'starter' WHERE plan IN ('free', 'starter') OR plan_code IS NULL;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'tenants' AND column_name = 'plan'
+  ) THEN
+    UPDATE tenants SET plan_code = 'pro' WHERE plan = 'pro';
+    UPDATE tenants SET plan_code = 'business' WHERE plan = 'enterprise';
+    UPDATE tenants SET plan_code = 'starter' WHERE plan IN ('free', 'starter');
+  END IF;
+END $$;
 
 -- ================================
 -- Done
