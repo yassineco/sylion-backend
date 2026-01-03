@@ -248,3 +248,71 @@ docs/
 ---
 
 **Prochaine étape :** Exécuter la réorganisation avec `git mv` et commits atomiques.
+
+---
+
+## 6️⃣ Feature Update: Knowledge Admin + Quotas (2025-12-31)
+
+### Summary
+
+Implementation of DB-driven plans, knowledge document management, and atomic quota enforcement.
+
+### Database Changes
+
+| Table | Change Type | Description |
+|-------|-------------|-------------|
+| `plans` | NEW | Plan definitions with `limits_json` column |
+| `knowledge_documents` | NEW | Document metadata (status, hash, size, chunks) |
+| `knowledge_chunks` | NEW | Chunked content with `vector(768)` embedding |
+| `usage_counters_daily` | NEW | Daily quota counters per tenant |
+| `tenants` | MODIFIED | Added `plan_code`, `documents_count`, `documents_storage_mb` |
+
+### Migration File
+
+`drizzle/0003_add_plans_and_knowledge.sql`
+
+**Idempotency:** All statements use `IF NOT EXISTS` / `ON CONFLICT` guards.
+
+### New Modules
+
+| Module | Files | Purpose |
+|--------|-------|---------|
+| `quota` | `quota.service.ts`, `quota.types.ts` | Limit validation + atomic consumption |
+| `admin/knowledge` | `knowledge.service.ts`, `knowledge.routes.ts` | Document CRUD + upload |
+
+### New Workers
+
+| Worker | Queue | Responsibility |
+|--------|-------|----------------|
+| `knowledge.worker.ts` | `rag:index-document` | Chunk → Embed → Store |
+
+### API Endpoints Added
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/admin/knowledge/documents` | GET | List with pagination |
+| `/admin/knowledge/documents` | POST | Upload (multipart) |
+| `/admin/knowledge/documents/:id` | GET | Single document |
+| `/admin/knowledge/documents/:id` | DELETE | Delete + chunks |
+| `/admin/knowledge/documents/:id/reindex` | POST | Trigger reindex |
+| `/admin/knowledge/stats` | GET | Usage statistics |
+
+### Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| Quota exhaustion during peak usage | Atomic PostgreSQL UPDATE prevents over-consumption |
+| Race condition on daily counter | Single UPDATE with `RETURNING` pattern |
+| Worker failure mid-indexation | Document stays in `error` status, retryable |
+| Migration on existing DB | FK created after seed; column guards with `IF EXISTS` |
+| Plan limits bypass | Hard check before AND atomic consumption during processing |
+
+### Documentation Updated
+
+- [README.md](README.md) — Added Knowledge & Quotas section
+- [API_REFERENCE.md](API_REFERENCE.md) — Added knowledge admin endpoints reference
+- [API_KNOWLEDGE_ADMIN.md](API_KNOWLEDGE_ADMIN.md) — Added atomic quota enforcement details
+- [API_USE_CASES_EXAMPLES.md](API_USE_CASES_EXAMPLES.md) — Added quota exhaustion example
+- [architecture/ARCHITECTURE_RULES.md](architecture/ARCHITECTURE_RULES.md) — Added indexing flow diagram
+- [operations/INCIDENT_RUNBOOK.md](operations/INCIDENT_RUNBOOK.md) — Added quota debugging + migration runbook
+- [frontend-examples/README.md](frontend-examples/README.md) — Added error handling guide

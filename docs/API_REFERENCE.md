@@ -251,6 +251,26 @@ Liste les documents.
 
 Détails + statut RAG.
 
+### 10.6. Knowledge Admin API (New System)
+
+The new knowledge admin system provides enhanced document management with quota enforcement.
+
+**Full documentation:** [API_KNOWLEDGE_ADMIN.md](./API_KNOWLEDGE_ADMIN.md)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/admin/knowledge/documents` | GET | List documents with pagination |
+| `/admin/knowledge/documents` | POST | Upload documents (multipart) |
+| `/admin/knowledge/documents/:id` | GET | Get single document |
+| `/admin/knowledge/documents/:id` | DELETE | Delete document + chunks |
+| `/admin/knowledge/documents/:id/reindex` | POST | Trigger reindexation |
+| `/admin/knowledge/stats` | GET | Quota usage statistics |
+
+**Quota Enforcement:**
+- Upload: checks `maxDocuments`, `maxStorageMb`, `maxDocSizeMb`
+- Indexation: atomic daily limit via `consumeDailyIndexingOrThrow`
+- Error code: `QUOTA_EXCEEDED` (HTTP 403)
+
 11. 📊 Usage & Quotas API
 11.1. GET /api/admin/usage
 

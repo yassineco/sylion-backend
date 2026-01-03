@@ -358,7 +358,110 @@ Après chaque incident résolu :
 
 ---
 
-## 🔧 Commandes utiles mémo
+## � Incident: Quota Blocking (Indexation Limit)
+
+### Symptômes
+- Documents stuck in `uploaded` or `error` status
+- Error in logs: `Daily indexing limit reached: X/Y`
+- Users report "document not searchable"
+- `GET /admin/knowledge/stats` shows `docsIndexedCount` at limit
+
+### Diagnostic
+
+```bash
+# 1. Check document status
+psql $DATABASE_URL -c "
+  SELECT id, name, status, error_reason, created_at
+  FROM knowledge_documents
+  WHERE tenant_id = 'TENANT_UUID'
+  ORDER BY created_at DESC LIMIT 10;
+"
+
+# 2. Check daily counter
+psql $DATABASE_URL -c "
+  SELECT date, docs_indexed_count, rag_queries_count
+  FROM usage_counters_daily
+  WHERE tenant_id = 'TENANT_UUID'
+  ORDER BY date DESC LIMIT 5;
+"
+
+# 3. Check plan limits
+psql $DATABASE_URL -c "
+  SELECT t.id, t.plan_code, p.limits_json->>'maxDailyIndexing' as daily_limit
+  FROM tenants t
+  JOIN plans p ON t.plan_code = p.code
+  WHERE t.id = 'TENANT_UUID';
+"
+
+# 4. Check failed jobs in BullMQ
+docker exec sylion-redis redis-cli keys "bull:rag:index-document:failed*"
+```
+
+### Actions correctives
+
+```bash
+# Option 1: Wait for daily reset (midnight UTC)
+# Counters reset automatically
+
+# Option 2: Upgrade tenant plan
+psql $DATABASE_URL -c "
+  UPDATE tenants SET plan_code = 'pro' WHERE id = 'TENANT_UUID';
+"
+
+# Option 3: Manual counter reset (EMERGENCY ONLY)
+psql $DATABASE_URL -c "
+  UPDATE usage_counters_daily
+  SET docs_indexed_count = 0
+  WHERE tenant_id = 'TENANT_UUID' AND date = CURRENT_DATE;
+"
+
+# Then retry failed documents
+curl -X POST http://localhost:3000/admin/knowledge/documents/DOC_UUID/reindex \
+  -H "X-Tenant-ID: TENANT_UUID"
+```
+
+### Prevention
+- Monitor `docsIndexedCount` approaching limit
+- Alert at 80% of daily quota
+- Educate tenants about plan limits
+
+---
+
+## 🗄️ DB Migration Runbook
+
+### Executing Migrations
+
+```bash
+# 1. Ensure PostgreSQL is running
+pg_isready -h localhost -p 5433
+
+# 2. Run migration (idempotent)
+psql "postgres://sylion_dev:dev_password@localhost:5433/sylion_dev" \
+  -f drizzle/0003_add_plans_and_knowledge.sql
+
+# 3. Verify (run twice to confirm idempotency)
+psql "postgres://sylion_dev:dev_password@localhost:5433/sylion_dev" \
+  -f drizzle/0003_add_plans_and_knowledge.sql
+```
+
+### Migration Tables Reference
+
+| Table | Purpose |
+|-------|---------|
+| `plans` | Plan definitions with `limits_json` |
+| `knowledge_documents` | Uploaded documents metadata |
+| `knowledge_chunks` | Chunked content with pgvector embeddings |
+| `usage_counters_daily` | Daily quota counters per tenant |
+
+### Idempotency Guarantees
+- All `CREATE TABLE IF NOT EXISTS`
+- All `CREATE INDEX IF NOT EXISTS`
+- Constraints use `DO $$ ... IF NOT EXISTS ... $$`
+- Plans seeded with `ON CONFLICT DO UPDATE`
+
+---
+
+## �🔧 Commandes utiles mémo
 
 ```bash
 # Redémarrage complet propre

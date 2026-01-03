@@ -299,7 +299,92 @@ APIs
 REST JSON uniquement
 
 Pas de GraphQL pour l’instant
+---
 
+## 11.5 Knowledge Indexing Flow
+
+### Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        KNOWLEDGE INDEXING FLOW                       │
+└─────────────────────────────────────────────────────────────────────┘
+
+  Admin UI / API
+       │
+       ▼
+┌──────────────────┐      ┌─────────────────────┐
+│ POST /documents  │ ───▶ │ knowledge.routes.ts │
+│ (multipart)      │      │                     │
+└──────────────────┘      └──────────┬──────────┘
+                                     │
+                     ┌───────────────┴───────────────┐
+                     ▼                               ▼
+            ┌────────────────┐              ┌────────────────┐
+            │ Quota Check    │              │ File Storage   │
+            │ assertCanUpload│              │ (local/GCS)    │
+            └───────┬────────┘              └───────┬────────┘
+                    │                               │
+                    │       ┌───────────────────────┘
+                    ▼       ▼
+            ┌────────────────────────┐
+            │ knowledge_documents    │ status: 'uploaded'
+            │ (PostgreSQL)           │
+            └───────────┬────────────┘
+                        │
+                        ▼
+            ┌────────────────────────┐
+            │ BullMQ Queue           │ job: 'rag:index-document'
+            │ (Redis)                │
+            └───────────┬────────────┘
+                        │
+                        ▼
+            ┌────────────────────────┐
+            │ knowledge.worker.ts    │
+            │                        │
+            │  1. consumeDaily       │◀──── ATOMIC QUOTA CHECK
+            │     IndexingOrThrow()  │      (PostgreSQL UPDATE)
+            │                        │
+            │  2. chunkText()        │
+            │                        │
+            │  3. generateBatch      │◀──── Vertex AI Embeddings
+            │     Embeddings()       │
+            │                        │
+            │  4. INSERT chunks      │──▶ knowledge_chunks (pgvector)
+            │                        │
+            └───────────┬────────────┘
+                        │
+                        ▼
+            ┌────────────────────────┐
+            │ knowledge_documents    │ status: 'indexed' | 'error'
+            └────────────────────────┘
+```
+
+### Quota Enforcement Point
+
+The quota is enforced **atomically** at step 1 in the worker, BEFORE any processing begins.
+
+```
+consumeDailyIndexingOrThrow(tenantId)
+    │
+    ├──▶ INSERT ... ON CONFLICT DO NOTHING  (create counter if absent)
+    │
+    └──▶ UPDATE ... WHERE count + 1 <= limit RETURNING count
+              │
+              ├── 1 row  ──▶ Credit consumed, proceed with indexation
+              │
+              └── 0 rows ──▶ Throw QuotaError, document stays in 'error'
+```
+
+### Worker Responsibilities
+
+| Worker | File | Queue | Responsibility |
+|--------|------|-------|----------------|
+| Knowledge Indexer | `knowledge.worker.ts` | `rag:index-document` | Chunk, embed, store vectors |
+| RAG Query | `rag.worker.ts` | `rag:query` | Similarity search, context retrieval |
+| Message Processor | `messageProcessor.worker.ts` | `incoming-messages` | Orchestrate AI + RAG |
+
+---
 12. 🧬 Évolution future
 v2
 

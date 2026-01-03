@@ -403,7 +403,105 @@ activer handoff humain
 
 activer add-ons : multi-numéros, analytics, connecteurs CRM
 
-10. 🦁 Conclusion
+---
+
+# 10. 🚫 Cas d'usage : Atteindre la limite d'indexation quotidienne
+
+## 10.1. Contexte
+
+Un tenant sur le plan **Starter** (5 documents/jour) tente d'indexer un 6ème document.
+
+## 10.2. Séquence
+
+### 1) Les 5 premiers documents sont uploadés et indexés
+
+```bash
+# Document 1-5 : succès
+curl -X POST http://localhost:3000/admin/knowledge/documents \
+  -H "X-Tenant-ID: tenant_starter" \
+  -F "files=@doc1.txt"
+
+# Réponse HTTP 200
+{
+  "success": true,
+  "data": {
+    "successful": [{ "id": "uuid-1", "status": "uploaded" }],
+    "totalUploaded": 1
+  }
+}
+```
+
+### 2) Le 6ème document : upload réussit, mais indexation bloquée
+
+```bash
+# Upload réussit (ne consomme pas de quota d'indexation)
+curl -X POST http://localhost:3000/admin/knowledge/documents \
+  -H "X-Tenant-ID: tenant_starter" \
+  -F "files=@doc6.txt"
+
+# HTTP 200 - le document est uploadé avec status "uploaded"
+```
+
+### 3) Le worker tente l'indexation → quota bloqué
+
+Le worker BullMQ appelle `consumeDailyIndexingOrThrow(tenantId)`.
+L'UPDATE atomique renvoie 0 rows (limit atteinte).
+
+**Le document reste en status `error` avec:**
+
+```json
+{
+  "status": "error",
+  "errorReason": "Daily indexing limit reached: 5/5"
+}
+```
+
+### 4) Vérification via GET /stats
+
+```bash
+curl http://localhost:3000/admin/knowledge/stats \
+  -H "X-Tenant-ID: tenant_starter"
+```
+
+```json
+{
+  "success": true,
+  "data": {
+    "documentsCount": 6,
+    "limits": {
+      "maxDailyIndexing": 5
+    },
+    "dailyUsage": {
+      "docsIndexedCount": 5
+    },
+    "planCode": "starter"
+  }
+}
+```
+
+### 5) Le lendemain : reindex réussit
+
+```bash
+# Le compteur quotidien est reset à minuit
+curl -X POST http://localhost:3000/admin/knowledge/documents/uuid-6/reindex \
+  -H "X-Tenant-ID: tenant_starter"
+
+# HTTP 200 - indexation démarre
+```
+
+## 10.3. Points clés
+
+| Aspect | Comportement |
+|--------|--------------|
+| Upload | Toujours autorisé si quotas documents/storage OK |
+| Indexation | Bloquée atomiquement si quota journalier atteint |
+| Status | Document passe en `error` avec raison explicite |
+| Reset | Quotas journaliers reset à minuit (UTC) |
+| Retry | `POST /documents/:id/reindex` le jour suivant |
+
+---
+
+11. 🦁 Conclusion
 Ce document donne des scénarios réalistes + recettes API pour déployer SYLION WhatsApp Assistant dans plusieurs secteurs.
 
 Il peut être utilisé :

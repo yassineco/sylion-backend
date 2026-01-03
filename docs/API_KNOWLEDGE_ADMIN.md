@@ -239,6 +239,41 @@ Get knowledge statistics and quota usage for a tenant.
 | `indexed` | Document successfully indexed and searchable |
 | `error` | Indexation failed (see `errorReason` field) |
 
+### Status Transitions
+
+```
+uploaded ──┬──> indexing ──┬──> indexed
+           │               │
+           │               └──> error
+           │
+           └──> (deleted)
+```
+
+---
+
+## Quota Enforcement
+
+### Atomic Daily Indexing Limit
+
+The indexing quota is enforced **atomically** in PostgreSQL before any indexation begins.
+This prevents race conditions where multiple concurrent indexation jobs could exceed the limit.
+
+**Enforcement point:** `consumeDailyIndexingOrThrow()` in `quota.service.ts`
+
+**Behavior:**
+1. Insert or get daily counter row (upsert)
+2. Atomically increment `docs_indexed_count` **only if** under limit
+3. If increment fails (0 rows updated), throw `QuotaError`
+
+**SQL pattern used:**
+```sql
+UPDATE usage_counters_daily
+SET docs_indexed_count = docs_indexed_count + 1
+WHERE tenant_id = $1 AND date = $2
+  AND docs_indexed_count + 1 <= $maxDailyIndexing
+RETURNING docs_indexed_count;
+```
+
 ---
 
 ## Quota Error Response
