@@ -4,15 +4,19 @@
  * ================================
  * 
  * Worker BullMQ pour traiter les messages WhatsApp entrants.
- * Pipeline : Résolution tenant/channel -> Conversation -> Message -> RAG -> IA -> Réponse
+ * Pipeline : Résolution tenant/channel -> IDEMPOTENCE -> RATE LIMIT -> Conversation -> Message -> QUOTA CHECK -> RAG -> IA -> Réponse
  */
 
 import { db, schema } from '@/db/index';
 import { generateAssistantReply } from '@/lib/llm';
 import { logger } from '@/lib/logger';
+import { QUOTA_EXCEEDED_USER_MESSAGE } from '@/lib/messages/quota';
+import { RATE_LIMITED_USER_MESSAGE } from '@/lib/messages/rateLimit';
+import { checkIdempotence, checkRateLimit } from '@/lib/rateLimit';
 import { assistantService } from '@/modules/assistant/assistant.service';
 import { conversationService } from '@/modules/conversation/conversation.service';
 import { messageService } from '@/modules/message/message.service';
+import { quotaService, type QuotaCheckResult } from '@/modules/quota';
 import type { RagContext } from '@/modules/rag';
 import { formatContextForPrompt, ragService } from '@/modules/rag';
 import { tenantService } from '@/modules/tenant/tenant.service';
@@ -181,18 +185,204 @@ export async function processIncomingMessage(
   try {
     // 1. Résolution du contexte (tenant, channel, conversation, assistant)
     const context = await resolveMessageContext(messageData);
+
+    // ================================
+    // 1.5 IDEMPOTENCE CHECK - Détection des doublons
+    // ================================
+    const idempotenceResult = await checkIdempotence(
+      messageData.providerMessageId,
+      context.tenantId
+    );
+
+    if (idempotenceResult.isDuplicate) {
+      logger.info('[Worker] Duplicate message detected - dropping silently', {
+        jobId: job.id,
+        providerMessageId: messageData.providerMessageId,
+        requestId: job.data.requestId,
+        tenantId: context.tenantId,
+        conversationId: context.conversationId,
+        event: 'duplicate_message_dropped',
+      });
+      // Pas de traitement, pas de réponse - drop silencieux
+      return;
+    }
+
+    // ================================
+    // 1.6 RATE LIMIT CHECK - Protection anti-abus
+    // ================================
+    const rateLimitResult = await checkRateLimit(
+      context.conversationId,
+      messageData.from.phoneNumber,
+      context.tenantId
+    );
+
+    if (rateLimitResult.isLimited) {
+      logger.warn('[Worker] Rate limit exceeded - LLM call blocked', {
+        jobId: job.id,
+        requestId: job.data.requestId,
+        tenantId: context.tenantId,
+        channelId: context.channelId,
+        conversationId: context.conversationId,
+        senderId: maskPhoneNumber(messageData.from.phoneNumber),
+        currentCount: rateLimitResult.currentCount,
+        limit: rateLimitResult.limit,
+        windowSeconds: rateLimitResult.windowSeconds,
+        alreadyNotified: rateLimitResult.alreadyNotified,
+        event: 'rate_limited',
+      });
+
+      // Répondre une seule fois par fenêtre (éviter le spam)
+      if (!rateLimitResult.alreadyNotified) {
+        // Envoyer le message de rate limit à l'utilisateur
+        await sendRateLimitReplyToWhatsApp(messageData, RATE_LIMITED_USER_MESSAGE);
+      }
+
+      // Pas de saveUserMessage, pas de LLM, pas de recordUsage
+      return;
+    }
+    // ================================
     
     // 2. Enregistrement du message utilisateur
     const userMessage = await saveUserMessage(context);
     
+    // ================================
+    // 2.5 QUOTA CHECK - BLOQUANT AVANT LLM
+    // ================================
+    // First, check if conversation is already marked as quota-blocked (conversational flag)
+    const alreadyBlocked = await conversationService.isQuotaBlocked(
+      context.conversationId,
+      context.tenantId
+    );
+
+    if (alreadyBlocked) {
+      // Conversation already blocked: skip quota service check, send fallback immediately
+      logger.info('[Worker] Conversation already quota-blocked - skipping quota service check', {
+        jobId: job.id,
+        requestId: job.data.requestId,
+        tenantId: context.tenantId,
+        conversationId: context.conversationId,
+        event: 'quota_blocked_cached',
+      });
+
+      // Create fallback message and send
+      const fallbackMessage = await saveQuotaExceededMessage(context, {
+        allowed: false,
+        reason: 'quota_blocked_cached',
+        currentUsage: -1, // Unknown, we didn't call quota service
+        limit: -1,
+      });
+      await sendReplyToWhatsApp(context, QUOTA_EXCEEDED_USER_MESSAGE);
+
+      logger.info('[Worker] Quota exceeded message sent (cached block, no quota check)', {
+        jobId: job.id,
+        requestId: job.data.requestId,
+        tenantId: context.tenantId,
+        conversationId: context.conversationId,
+        fallbackMessageId: fallbackMessage.id,
+        event: 'quota_exceeded_handled',
+      });
+
+      return;
+    }
+
+    // If not already blocked, check with quota service
+    const quotaResult = await checkQuotaBeforeLLM(context);
+    
+    if (!quotaResult.allowed) {
+      // Quota dépassé : créer un message fallback SANS appeler le LLM
+      logger.warn('[Worker] Quota exceeded - LLM call blocked', {
+        jobId: job.id,
+        requestId: job.data.requestId,
+        tenantId: context.tenantId,
+        conversationId: context.conversationId,
+        reason: quotaResult.reason,
+        currentUsage: quotaResult.currentUsage,
+        limit: quotaResult.limit,
+        event: 'quota_exceeded',
+      });
+
+      // Mark conversation as quota-blocked for subsequent messages
+      await conversationService.setQuotaBlocked(
+        context.conversationId,
+        context.tenantId,
+        true
+      );
+
+      // Créer le message assistant de fallback
+      const fallbackMessage = await saveQuotaExceededMessage(context, quotaResult);
+      
+      // Envoyer la réponse fallback à l'utilisateur via WhatsApp
+      await sendReplyToWhatsApp(context, QUOTA_EXCEEDED_USER_MESSAGE);
+      
+      logger.info('[Worker] Quota exceeded message sent (no LLM call)', {
+        jobId: job.id,
+        requestId: job.data.requestId,
+        tenantId: context.tenantId,
+        conversationId: context.conversationId,
+        fallbackMessageId: fallbackMessage.id,
+        quotaBlocked: true,
+        event: 'quota_exceeded_handled',
+      });
+
+      // Terminer le job avec succès (le message a été traité, même sans LLM)
+      return;
+    }
+    // ================================
+    
     // 3. Génération de la réponse IA (avec RAG si activé)
+    // Structured event: llm_request (only when not blocked by quota/rate-limit/idempotence)
+    logger.info('Initiating LLM request for message processing', {
+      event: 'llm_request',
+      jobId: job.id,
+      requestId: job.data.requestId,
+      providerMessageId: messageData.providerMessageId,
+      conversationId: context.conversationId,
+      tenantId: context.tenantId,
+      channelId: context.channelId,
+      reason: 'normal',
+    });
+
+    const llmStartTime = Date.now();
     const { reply: assistantReply, ragContext } = await generateReply(context);
+    const llmDurationMs = Date.now() - llmStartTime;
+
+    // Structured event: llm_request_completed (L1 confirmation - only on success)
+    logger.info('LLM request completed successfully', {
+      event: 'llm_request_completed',
+      jobId: job.id,
+      requestId: job.data.requestId,
+      providerMessageId: messageData.providerMessageId,
+      conversationId: context.conversationId,
+      tenantId: context.tenantId,
+      channelId: context.channelId,
+      durationMs: llmDurationMs,
+      replyLength: assistantReply.length,
+      ragUsed: !!ragContext,
+    });
     
     // 4. Enregistrement du message assistant (avec info RAG)
     const assistantMessage = await saveAssistantMessage(context, assistantReply, ragContext);
     
     // 5. Envoi de la réponse WhatsApp
     await sendReplyToWhatsApp(context, assistantReply);
+
+    // Structured event: message_sent (AFTER persistence + send - Invariant L4)
+    // Note: context.message.from is the inbound sender, but for the outbound reply,
+    // this becomes the recipient (to), and channelPhoneNumber is the bot phone (botPhone).
+    logger.info('Reply sent and persisted successfully', {
+      event: 'message_sent',
+      direction: 'outbound',
+      jobId: job.id,
+      requestId: job.data.requestId,
+      providerMessageId: messageData.externalId,
+      conversationId: context.conversationId,
+      tenantId: context.tenantId,
+      channelId: context.channelId,
+      messageId: assistantMessage.id,
+      botPhone: maskPhoneNumber(context.message.channelPhoneNumber),
+      to: maskPhoneNumber(context.message.from.phoneNumber),
+      replyLength: assistantReply.length,
+    });
     
     // 6. Mise à jour des statistiques
     await updateStats(context);
@@ -662,7 +852,7 @@ async function sendReplyToWhatsApp(
       }
     );
 
-    logger.info('Reply sent via WhatsApp', {
+    logger.debug('WhatsApp message sent to provider', {
       to: maskPhoneNumber(context.message.from.phoneNumber),
       conversationId: context.conversationId,
       replyLength: reply.length,
@@ -703,5 +893,126 @@ async function updateStats(context: MessageProcessorContext): Promise<void> {
       error: error instanceof Error ? error.message : String(error),
     });
     // Ne pas faire échouer le job pour des erreurs de stats
+  }
+}
+
+/**
+ * ================================
+ * Quota Check BEFORE LLM
+ * ================================
+ * BLOCKING: If quota exhausted, LLM is NOT called
+ */
+async function checkQuotaBeforeLLM(context: MessageProcessorContext): Promise<QuotaCheckResult> {
+  try {
+    const result = await quotaService.checkQuota(context.tenantId, 'message');
+    
+    logger.debug('Quota check result', {
+      tenantId: context.tenantId,
+      conversationId: context.conversationId,
+      allowed: result.allowed,
+      currentUsage: result.currentUsage,
+      limit: result.limit,
+      reason: result.reason,
+    });
+
+    return result;
+  } catch (error) {
+    logger.error('Error checking quota (failing safe: blocking)', {
+      tenantId: context.tenantId,
+      conversationId: context.conversationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    // Fail-safe: block if quota check fails
+    return {
+      allowed: false,
+      reason: 'quota_check_error',
+      currentUsage: 0,
+      limit: 0,
+    };
+  }
+}
+
+/**
+ * ================================
+ * Save Quota Exceeded Fallback Message
+ * ================================
+ * Saves the fallback message as an outbound message without calling LLM
+ */
+async function saveQuotaExceededMessage(
+  context: MessageProcessorContext,
+  quotaResult: QuotaCheckResult
+) {
+  try {
+    const message = await messageService.createMessage(context.conversationId, {
+      type: 'text',
+      direction: 'outbound',
+      content: QUOTA_EXCEEDED_USER_MESSAGE,
+      status: 'processed',
+      metadata: {
+        quotaExceeded: true,
+        quotaReason: quotaResult.reason,
+        currentUsage: quotaResult.currentUsage,
+        limit: quotaResult.limit,
+        llmSkipped: true,
+      },
+    });
+
+    logger.info('Quota exceeded fallback message saved', {
+      messageId: message.id,
+      tenantId: context.tenantId,
+      conversationId: context.conversationId,
+      reason: quotaResult.reason,
+      currentUsage: quotaResult.currentUsage,
+      limit: quotaResult.limit,
+    });
+
+    return message;
+  } catch (error) {
+    logger.error('Error saving quota exceeded message', {
+      tenantId: context.tenantId,
+      conversationId: context.conversationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
+/**
+ * ================================
+ * Send Rate Limit Reply to WhatsApp
+ * ================================
+ * Sends rate limit message without requiring full context
+ * (used early in pipeline before message is saved)
+ */
+async function sendRateLimitReplyToWhatsApp(
+  messageData: NormalizedIncomingMessage,
+  reply: string
+): Promise<void> {
+  try {
+    await sendWhatsAppMessage(
+      messageData.from.phoneNumber,
+      reply,
+      {
+        metadata: {
+          rateLimited: true,
+          replyToMessage: messageData.externalId,
+        },
+        previewUrl: false,
+        replyToMessageId: messageData.externalId,
+      }
+    );
+
+    logger.info('Rate limit reply sent via WhatsApp', {
+      to: maskPhoneNumber(messageData.from.phoneNumber),
+      replyLength: reply.length,
+      event: 'rate_limit_reply_sent',
+    });
+
+  } catch (error) {
+    logger.error('Error sending rate limit WhatsApp reply', {
+      to: maskPhoneNumber(messageData.from.phoneNumber),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    // Don't throw - rate limit reply is best-effort
   }
 }

@@ -63,10 +63,14 @@ const baseWorkerConfig: Omit<WorkerOptions, 'connection'> = {
  * Définition des types de jobs
  */
 export interface JobTypes {
-  // Message Processing Jobs
+  /**
+   * @deprecated Legacy job type - No longer used since POST /whatsapp/webhook is deprecated.
+   * Use 'whatsapp:process-incoming' instead (via POST /api/v1/whatsapp/webhook).
+   */
   'incoming-message': {
     messageData: import('@/modules/whatsapp/types').NormalizedIncomingMessage;
     timestamp: string;
+    requestId?: string;  // A4 correlation: HTTP request correlation ID
   };
 
   // WhatsApp Jobs
@@ -94,6 +98,8 @@ export interface JobTypes {
       mediaUrl?: string;
     };
     timestamp: string;
+    providerMessageId: string;  // A4 correlation: ID message WhatsApp provider
+    requestId?: string;         // A4 correlation: HTTP request correlation ID
   };
 
   // AI Jobs
@@ -408,10 +414,47 @@ export async function startWorkers(): Promise<Worker[]> {
     });
 
     worker.on('failed', (job: Job | undefined, error: Error) => {
-      logger.error(`Job ${job?.id} failed in ${workerName} worker`, {
-        error: error.message,
+      // Extract job data for correlation (if available)
+      const jobData = job?.data as Record<string, unknown> | undefined;
+      const attemptsMade = job?.attemptsMade ?? 0;
+      const attemptsMax = job?.opts?.attempts ?? 3;
+      const willRetry = attemptsMade < attemptsMax;
+
+      // Structured event: job_failed (A5 observability)
+      logger.info('Job failed', {
+        event: 'job_failed',
         jobId: job?.id,
+        jobName: job?.name,
+        queue: queueName,
+        workerName,
+        attemptsMade,
+        attemptsMax,
+        willRetry,
+        error: error.message,
+        requestId: jobData?.requestId as string | undefined,
+        providerMessageId: jobData?.providerMessageId as string | undefined,
+        tenantId: jobData?.tenantId as string | undefined,
+        channelId: jobData?.channelId as string | undefined,
+        conversationId: jobData?.conversationId as string | undefined,
       });
+
+      // If will retry, emit job_retry_scheduled
+      if (willRetry) {
+        logger.info('Job retry scheduled', {
+          event: 'job_retry_scheduled',
+          jobId: job?.id,
+          jobName: job?.name,
+          queue: queueName,
+          attemptsMade,
+          attemptsMax,
+          nextAttempt: attemptsMade + 1,
+          requestId: jobData?.requestId as string | undefined,
+          providerMessageId: jobData?.providerMessageId as string | undefined,
+          tenantId: jobData?.tenantId as string | undefined,
+          channelId: jobData?.channelId as string | undefined,
+          conversationId: jobData?.conversationId as string | undefined,
+        });
+      }
     });
 
     worker.on('completed', (job: Job | undefined) => {

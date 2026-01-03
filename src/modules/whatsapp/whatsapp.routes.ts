@@ -14,8 +14,8 @@ import type { RawWhatsAppPayload } from './types';
 import { WhatsAppError } from './types';
 import { validateWebhook } from './whatsapp.gateway'; // legacy GET webhook
 import {
-  enqueueIncomingWhatsAppJob,
-  handleIncomingWhatsAppMessage,
+    enqueueIncomingWhatsAppJob,
+    handleIncomingWhatsAppMessage,
 } from './whatsapp_service';
 
 /**
@@ -184,8 +184,23 @@ export async function registerWhatsAppRoutes(fastify: FastifyInstance): Promise<
     async (request: WebhookPostRequest, reply: FastifyReply): Promise<void> => {
       const requestId = (request as any).requestId;
 
+      // Extract provider message info for structured logging (before any processing)
+      const firstMessage = request.body?.messages?.[0];
+      const providerMessageId = firstMessage?.id;
+      const fromPhone = firstMessage?.from;
+
+      // Structured event: message_received (entry point)
+      logger.info('Incoming WhatsApp message received', {
+        event: 'message_received',
+        provider: '360dialog',
+        providerMessageId: providerMessageId || 'unknown',
+        from: fromPhone ? fromPhone.substring(0, 6) + '****' : 'unknown',
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+
       try {
-        logger.info('WhatsApp webhook event received (Boss 1)', {
+        logger.debug('WhatsApp webhook event received (Boss 1)', {
           hasBody: !!request.body,
           contentType: request.headers['content-type'],
           requestId,
@@ -220,7 +235,7 @@ export async function registerWhatsAppRoutes(fastify: FastifyInstance): Promise<
         });
 
         // 4. Push queue
-        await enqueueIncomingWhatsAppJob(normalized, coreResult);
+        await enqueueIncomingWhatsAppJob(normalized, coreResult, requestId);
 
         logger.info('WhatsApp message processing job enqueued', {
           tenantId: coreResult.tenantId,

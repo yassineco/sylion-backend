@@ -230,10 +230,12 @@ export async function handleIncomingWhatsAppMessage(
  *
  * @param normalized - Message normalisé depuis le gateway
  * @param coreResult - Résultat du traitement core (tenant, channel, conversation, message)
+ * @param requestId - Optional HTTP request correlation ID (A4)
  */
 export async function enqueueIncomingWhatsAppJob(
   normalized: NormalizedIncomingMessage,
   coreResult: HandleIncomingWhatsAppResult,
+  requestId?: string,
 ): Promise<void> {
   logger.info('Enqueuing WhatsApp message processing job', {
     tenantId: coreResult.tenantId,
@@ -243,7 +245,7 @@ export async function enqueueIncomingWhatsAppJob(
   });
 
   try {
-    await addJob(
+    const job = await addJob(
       'whatsapp:process-incoming',
       {
         tenantId: coreResult.tenantId,
@@ -256,6 +258,8 @@ export async function enqueueIncomingWhatsAppJob(
           content: normalized.text,
         },
         timestamp: normalized.timestamp.toISOString(),
+        providerMessageId: normalized.providerMessageId,
+        requestId,
       },
       {
         priority: 10,
@@ -263,10 +267,17 @@ export async function enqueueIncomingWhatsAppJob(
       },
     );
 
+    // Structured event: job_added (with jobId for A4 correlation)
     logger.info('WhatsApp processing job enqueued successfully', {
+      event: 'job_added',
+      queue: 'whatsapp:process-incoming',
+      jobId: job.id,
       tenantId: coreResult.tenantId,
+      channelId: coreResult.channelId,
       conversationId: coreResult.conversationId,
       messageId: coreResult.messageId,
+      providerMessageId: normalized.providerMessageId,
+      requestId,
     });
   } catch (error) {
     logger.error('Failed to enqueue WhatsApp processing job', {

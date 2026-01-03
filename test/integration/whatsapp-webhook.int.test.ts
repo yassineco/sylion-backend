@@ -62,7 +62,7 @@ describe('WhatsApp Webhook Boss 1 Integration', () => {
     await app.close();
   });
 
-  describe('POST /whatsapp/webhook - Boss 1 Pipeline', () => {
+  describe('POST /api/v1/whatsapp/webhook - Boss 1 Pipeline', () => {
     
     it('devrait traiter un message 360dialog et créer les enregistrements DB', async () => {
       // Arrange - Payload 360dialog format

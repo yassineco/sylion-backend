@@ -370,6 +370,71 @@ export class ConversationService {
   }
 
   /**
+   * Marquer une conversation comme bloquée par quota
+   * 
+   * @param id - ID de la conversation
+   * @param tenantId - ID du tenant (sécurité multi-tenant)
+   * @param blocked - true pour bloquer, false pour débloquer
+   */
+  async setQuotaBlocked(id: string, tenantId: string, blocked: boolean): Promise<void> {
+    await withTransaction(async (tx) => {
+      // Récupérer le contexte actuel
+      const results = await tx
+        .select({ context: schema.conversations.context })
+        .from(schema.conversations)
+        .where(and(
+          eq(schema.conversations.id, id),
+          eq(schema.conversations.tenantId, tenantId)
+        ))
+        .limit(1);
+
+      const currentContext = (results[0]?.context as Record<string, unknown>) || {};
+      
+      // Mettre à jour avec le flag quotaBlocked
+      const newContext = {
+        ...currentContext,
+        quotaBlocked: blocked,
+        quotaBlockedAt: blocked ? new Date().toISOString() : null,
+      };
+
+      await tx
+        .update(schema.conversations)
+        .set({
+          context: newContext,
+          updatedAt: sql`NOW()`,
+        })
+        .where(and(
+          eq(schema.conversations.id, id),
+          eq(schema.conversations.tenantId, tenantId)
+        ));
+
+      // Invalider le cache
+      await deleteCache(cacheKeys.conversation(id));
+
+      logger.debug('Conversation quota blocked status updated', {
+        conversationId: id,
+        tenantId,
+        quotaBlocked: blocked,
+      });
+    });
+  }
+
+  /**
+   * Vérifier si une conversation est bloquée par quota
+   * 
+   * @param id - ID de la conversation
+   * @param tenantId - ID du tenant (sécurité multi-tenant)
+   * @returns true si la conversation est bloquée
+   */
+  async isQuotaBlocked(id: string, tenantId: string): Promise<boolean> {
+    const conversation = await this.getConversationById(id, tenantId);
+    if (!conversation) return false;
+    
+    const context = conversation.context as Record<string, unknown>;
+    return context?.quotaBlocked === true;
+  }
+
+  /**
    * Mettre à jour le timestamp du dernier message (sécurisé multi-tenant)
    */
   async updateLastMessageTime(id: string, tenantId: string): Promise<void> {
