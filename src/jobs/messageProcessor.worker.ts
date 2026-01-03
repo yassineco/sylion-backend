@@ -374,7 +374,7 @@ export async function processIncomingMessage(
       direction: 'outbound',
       jobId: job.id,
       requestId: job.data.requestId,
-      providerMessageId: messageData.externalId,
+      providerMessageId: messageData.providerMessageId,
       conversationId: context.conversationId,
       tenantId: context.tenantId,
       channelId: context.channelId,
